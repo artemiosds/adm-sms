@@ -1,0 +1,1398 @@
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useServerFn } from "@tanstack/react-start";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { supabase } from "@/integrations/supabase/client";
+import { cn } from "@/lib/utils";
+import { useSearch } from "@tanstack/react-router";
+import {
+  listarFolhaContratados,
+  salvarFolhaContratados,
+  enviarFolhaContratados,
+} from "@/lib/frequencias-contratados.functions";
+import { Button } from "@/components/ui/button";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/shared";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { toast } from "sonner";
+import {
+  Save,
+  Send,
+  Search,
+  FileSpreadsheet,
+  FileDown,
+  Download,
+  Palmtree,
+  HeartPulse,
+  AlertOctagon,
+  Ban,
+  ArrowRightLeft,
+  Filter as FilterIcon,
+} from "lucide-react";
+import { useCurrentUser, usePermissions } from "@/hooks/use-permissions";
+import { useUnitScope } from "@/hooks/use-unit-scope";
+
+import { useCompetenciaAtiva } from "@/hooks/use-competencia-ativa";
+import type { Database } from "@/integrations/supabase/types";
+import type { ItemContratado } from "@/lib/excel-folha-contratados";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { useConferenciaProfissionais, mergeConferencia } from "@/hooks/use-conferencia";
+import {
+  SituacaoResumo,
+  SituacaoFilter,
+  ProfissionalNomeCell,
+  SituacaoBadge,
+  ProfissionalEdicaoModal,
+  type SituacaoFilterValue,
+} from "@/components/shared/gerencial";
+import { UnidadeFilter } from "@/components/shared";
+
+import { LinhaAnexos } from "@/components/frequencias/linha-anexos";
+import { EnviarFolhaDialog } from "@/components/frequencias/enviar-folha-dialog";
+import {
+  contarSituacoes,
+  derivarSituacao,
+  overrideSituacaoFolha,
+  aplicarOverrideSituacao,
+  type ProfConferencia,
+} from "@/lib/situacao-funcional";
+import {
+  ErpGridProvider,
+  ErpTbody,
+  NumberCell,
+  TextCell,
+  normalizarParaSoma,
+  KpiFolhaBar,
+  InconsistenciasPanel,
+  frozenLeftMap,
+  type FrozenCol,
+} from "@/components/erp-grid";
+import {
+  FolhaBreadcrumb,
+  ResumoDiasFaltasAtt,
+  useSelectedErpRow,
+} from "@/components/frequencias/resumo-dias-faltas-att";
+import { MultiSelect } from "@/components/ui/multi-select";
+import { useFrequencyRealtime } from "@/lib/realtime/frequency-realtime";
+
+type StatusFreq = Database["public"]["Enums"]["status_frequencia"];
+
+
+const MESES = [
+  "Janeiro",
+  "Fevereiro",
+  "Março",
+  "Abril",
+  "Maio",
+  "Junho",
+  "Julho",
+  "Agosto",
+  "Setembro",
+  "Outubro",
+  "Novembro",
+  "Dezembro",
+];
+
+type LinhaState = {
+  profissional_id: string;
+  status: StatusFreq;
+  dias_trabalhados: number | string;
+  dias_falta: number | string;
+  atestado: number | string;
+  he_50: number | string;
+  he_100: number | string;
+  adn: number | string;
+  plantoes: number | string;
+  sobreaviso: number | string;
+  incentivo: number | string;
+  observacoes: string;
+  _dirty?: boolean;
+};
+
+const CAMPOS_NUM = [
+  "dias_trabalhados",
+  "dias_falta",
+  "atestado",
+  "he_50",
+  "he_100",
+  "adn",
+  "plantoes",
+  "sobreaviso",
+  "incentivo",
+] as const;
+
+/** Formata dados bancários em uma única linha limpa, sem prefixos duplicados. */
+function formatContaBancaria(
+  banco?: string | null,
+  agencia?: string | null,
+  conta?: string | null,
+): string {
+  const parts: string[] = [];
+  if (banco) parts.push(String(banco).trim());
+  if (agencia)
+    parts.push(
+      `AG: ${String(agencia)
+        .replace(/^\s*AG[:\s]*/i, "")
+        .trim()}`,
+    );
+  if (conta)
+    parts.push(
+      `CC: ${String(conta)
+        .replace(/^\s*CC[:\s]*/i, "")
+        .trim()}`,
+    );
+  return parts.length ? parts.join(" | ") : "—";
+}
+
+export function FrequenciasContratadosPage() {
+  const qc = useQueryClient();
+  const search = useSearch({ from: "/_authenticated/frequencia/contratados" });
+  const [enviarAberto, setEnviarAberto] = useState(false);
+  const { has } = usePermissions();
+  const { data: me } = useCurrentUser();
+  const { data: compAtiva } = useCompetenciaAtiva();
+  const { isGlobal, unidadesPermitidas, unidadePadraoId } = useUnitScope();
+
+  const [competenciaId, setCompetenciaId] = useState<string>(search.competenciaId || "");
+  const [unidadeId, setUnidadeId] = useState<string>(search.unidadeId || "");
+
+  // Sincroniza unidadeId com a padrão do escopo
+  useEffect(() => {
+    if (!unidadeId && unidadePadraoId) {
+      setUnidadeId(unidadePadraoId);
+    }
+  }, [unidadePadraoId, unidadeId]);
+
+
+
+  const [busca, setBusca] = useState("");
+  const [cargoFilter, setCargoFilter] = useState<string>("todos");
+  const [funcaoFilter, setFuncaoFilter] = useState<string>("todos");
+  const [setorFilter, setSetorFilter] = useState<string[]>([]);
+  const [situacaoFilter, setSituacaoFilter] = useState<SituacaoFilterValue>("todas");
+  const [pendFilter, setPendFilter] = useState<
+    "todos" | "sem_conta" | "sem_cargo" | "sem_lotacao" | "sem_matricula" | "sem_cpf"
+  >("todos");
+  const [dossieProf, setDossieProf] = useState<ProfConferencia | null>(null);
+  const [dossieOpen, setDossieOpen] = useState(false);
+
+  const { data: cargosOpts } = useQuery({
+    queryKey: ["cargos-filter"],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("cargos")
+        .select("id, nome")
+        .is("deleted_at", null)
+        
+        .order("nome");
+      return data ?? [];
+    },
+  });
+  const { data: funcoesOpts } = useQuery({
+    queryKey: ["funcoes-filter"],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("funcoes")
+        .select("id, nome")
+        .is("deleted_at", null)
+        
+        .order("nome");
+      return data ?? [];
+    },
+  });
+  const { data: setoresOpts } = useQuery({
+    queryKey: ["setores-filter", unidadeId],
+    enabled: !!unidadeId,
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("setores")
+        .select("id, nome")
+        .eq("unidade_id", unidadeId)
+        .is("deleted_at", null)
+        .order("nome");
+      return data ?? [];
+    },
+  });
+  useEffect(() => {
+    setSetorFilter([]);
+  }, [unidadeId]);
+
+  // Competências
+  const { data: competencias } = useQuery({
+    queryKey: ["comps-contratados"],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("competencias")
+        .select("id, ano, mes, status")
+        .is("deleted_at", null)
+        .order("ano", { ascending: false })
+        .order("mes", { ascending: false });
+      return data ?? [];
+    },
+  });
+
+  useEffect(() => {
+    if (!competenciaId && compAtiva?.id) setCompetenciaId(compAtiva.id);
+    else if (!competenciaId && competencias?.length) setCompetenciaId(competencias[0].id);
+  }, [compAtiva, competencias, competenciaId]);
+
+  const compSel = competencias?.find((c) => c.id === competenciaId);
+  const compFechada = compSel?.status === "encerrada" || compSel?.status === "arquivada";
+
+  // Unidades visíveis - Prioriza o que vem do contexto do usuário
+  const isGestor = useMemo(() => 
+    !!me?.is_master || !!me?.acesso_todas_unidades, 
+    [me]
+  );
+
+  const { data: unidades } = useQuery({
+    queryKey: ["unidades-contratados-lista", me?.id],
+    enabled: !!me,
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("unidades")
+        .select("id, nome, sigla, tipo_unidade")
+        .is("deleted_at", null)
+        .order("nome");
+      return data ?? [];
+    },
+  });
+
+  const unidadesVisiveis = useMemo(() => {
+    if (!me || !unidades) return [];
+    if (isGlobal) return unidades;
+    
+    // Para Diretores, filtra as unidades globais baseando-se no array de unidades do contexto
+    const permitidas = new Set(unidadesPermitidas || []);
+    return unidades.filter(u => permitidas.has(u.id));
+  }, [me, unidades, isGlobal, unidadesPermitidas]);
+
+  useEffect(() => {
+    // Se unidadeId está vazio, tenta a padrão do escopo
+    if (!unidadeId && unidadePadraoId) {
+      setUnidadeId(unidadePadraoId);
+    } 
+    // Se ainda vazio e temos unidades visíveis, pega a primeira
+    else if (!unidadeId && unidadesVisiveis.length > 0) {
+      setUnidadeId(unidadesVisiveis[0].id);
+    }
+  }, [unidadesVisiveis, unidadeId, unidadePadraoId]);
+
+
+  const unidadeSel = useMemo(() => 
+    unidadesVisiveis.find((u: any) => u.id === unidadeId),
+    [unidadesVisiveis, unidadeId]
+  );
+
+  // Folha
+  const carregar = useServerFn(listarFolhaContratados);
+  const { data: folha, isFetching } = useQuery({
+    queryKey: ["folha-contratados", competenciaId, unidadeId, (setorFilter.length > 0 && setorFilter.length !== (setoresOpts?.length ?? 0)) ? setorFilter : "all"],
+    enabled: !!competenciaId && !!unidadeId,
+    queryFn: () => carregar({ data: { competencia_id: competenciaId, unidade_id: unidadeId, setor_id: (setorFilter.length > 0 && setorFilter.length !== (setoresOpts?.length ?? 0)) ? setorFilter : undefined } }),
+  });
+
+  // Exportação PDF / Excel — só liberadas quando toda a folha estiver aprovada.
+  const { data: summary } = useQuery({
+    queryKey: ["frequencia-resumo", competenciaId, unidadeId, "contratados"],
+    enabled: !!competenciaId && !!unidadeId,
+    queryFn: async () => {
+      let q = supabase
+        .from("frequencias")
+        .select("id, status")
+        .eq("tipo", "contratados")
+        .eq("competencia_unidades.competencia_id", competenciaId);
+      
+      // Se for MASTER e unidadeId for "__all__" (ou null), não filtra por unidade
+      if (unidadeId !== "__all__" && unidadeId) {
+        q = q.eq("competencia_unidades.unidade_id", unidadeId);
+      }
+      
+      const { data } = await q.maybeSingle();
+      return data;
+    }
+  });
+
+  const frequenciaId = summary?.id;
+  useFrequencyRealtime({ competenciaId, unidadeId, frequenciaId });
+
+  const folhaStatusUnificado = useMemo(() => {
+    // Se temos um resumo sincronizado no banco, ele é a fonte da verdade para o status global
+    if (summary?.status) return summary.status;
+    
+    if (!folha?.length) return "rascunho";
+    const statuses = new Set(folha.map((it: any) => it.linha?.status ?? "rascunho"));
+    
+    if (statuses.has("rejeitada")) return "rejeitada";
+    if (statuses.has("devolvida")) return "devolvida";
+    if (statuses.has("com_pendencias")) return "com_pendencias";
+    if (statuses.has("em_analise")) return "em_analise";
+    if (statuses.has("enviada")) return "enviada";
+    if (statuses.size === 1 && statuses.has("aprovada")) return "aprovada";
+    
+    return "rascunho";
+  }, [folha, summary]);
+
+  // Carrega última justificativa se devolvida
+  const { data: ultimaAcao } = useQuery({
+    queryKey: ["frequencia-ultima-acao", competenciaId, unidadeId, "contratados"],
+    enabled: !!competenciaId && !!unidadeId && folhaStatusUnificado === "devolvida",
+    queryFn: async () => {
+      const { data: res } = await supabase
+        .from("frequencias")
+        .select("id")
+        .eq("tipo", "contratados")
+        .eq("competencia_unidades.competencia_id", competenciaId)
+        .eq("competencia_unidades.unidade_id", unidadeId)
+        .maybeSingle();
+
+      if (!res?.id) return null;
+
+      const { data } = await supabase
+        .from("frequencia_aprovacoes")
+        .select("observacoes, executado_por, created_at")
+        .eq("frequencia_id", res.id)
+        .eq("status_novo", "devolvida")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      return data;
+    },
+  });
+
+  // Estado local editável
+  const [linhas, setLinhas] = useState<Record<string, LinhaState>>({});
+  useEffect(() => {
+    if (!folha) return;
+    const next: Record<string, LinhaState> = {};
+    for (const item of folha) {
+      const l = item.linha;
+      next[item.profissional.id] = {
+        profissional_id: item.profissional.id,
+        status: (l?.status as StatusFreq) ?? "rascunho",
+        dias_trabalhados: String(l?.dias_trabalhados ?? "0"),
+        dias_falta: String(l?.dias_falta ?? "0"),
+        atestado: String(l?.atestado ?? "0"),
+        he_50: String(l?.he_50 ?? "0"),
+        he_100: String(l?.he_100 ?? "0"),
+        adn: String(l?.adn ?? "0"),
+        plantoes: String(l?.plantoes ?? "0"),
+        sobreaviso: String(l?.sobreaviso ?? "0"),
+        incentivo: String(l?.incentivo ?? "0"),
+        observacoes: l?.observacoes ?? "",
+      };
+    }
+    setLinhas(next);
+  }, [folha]);
+
+  const isMaster = !!me?.is_master;
+  const perfilCodigo = me?.perfil_codigo || "";
+  const isDiretor = perfilCodigo === "DIRETOR_UNIDADE" || isMaster;
+  const canEdit = !compFechada && has("frequencia.editar");
+
+  function readonlyLinha(l: LinhaState | undefined) {
+    if (!l) return true;
+    if (!canEdit) return true;
+    // Após enviada/aprovada/em análise, campos ficam somente leitura
+    return !(l.status === "rascunho" || l.status === "rejeitada" || l.status === "devolvida");
+  }
+
+  const salvarFn = useServerFn(salvarFolhaContratados);
+  const enviarFn = useServerFn(enviarFolhaContratados);
+
+  const updateCampo = useCallback((pid: string, campo: keyof LinhaState, valor: number | string) => {
+    setLinhas((prev) => {
+      const cur = prev[pid];
+      if (!cur) return prev;
+      const next = { ...prev, [pid]: { ...cur, [campo]: valor, _dirty: true } };
+
+      // Sincronização automática para 'status' (Edição via Modal)
+      if (campo === "status") {
+        const sId = (setorFilter.length > 0 && setorFilter.length !== (setoresOpts?.length ?? 0)) ? setorFilter[0] : undefined;
+        salvarFn({
+          data: {
+            competencia_id: competenciaId,
+            unidade_id: unidadeId,
+            setor_id: sId,
+            linhas: [{
+              profissional_id: pid,
+              status: valor as StatusFreq,
+              dias_trabalhados: cur.dias_trabalhados,
+              dias_falta: cur.dias_falta,
+              atestado: cur.atestado,
+              he_50: cur.he_50,
+              he_100: cur.he_100,
+              adn: cur.adn,
+              plantoes: cur.plantoes,
+              sobreaviso: cur.sobreaviso,
+              incentivo: cur.incentivo,
+              observacoes: cur.observacoes || null,
+            }],
+          },
+        }).then(() => {
+          qc.invalidateQueries({ queryKey: ["folha-contratados"] });
+          qc.invalidateQueries({ queryKey: ["frequencia-resumo"] });
+        });
+      }
+
+      return next;
+    });
+  }, [competenciaId, unidadeId, setorFilter, setoresOpts, salvarFn, qc]);
+
+  const mSalvar = useMutation({
+    mutationFn: async () => {
+      const { offlineGuard } = await import("@/lib/offline-guard");
+      if (offlineGuard()) throw new Error("Offline");
+
+      const dirtyList = Object.values(linhas).filter((l) => l._dirty);
+      const list = dirtyList.map((l) => ({
+        profissional_id: l.profissional_id,
+        status: l.status,
+        dias_trabalhados: l.dias_trabalhados,
+        dias_falta: l.dias_falta,
+        atestado: l.atestado,
+        he_50: l.he_50,
+        he_100: l.he_100,
+        adn: l.adn,
+        plantoes: l.plantoes,
+        sobreaviso: l.sobreaviso,
+        incentivo: l.incentivo,
+        observacoes: l.observacoes || null,
+      }));
+
+      console.log("DEBUG_SALVAMENTO: Payload enviado (Contratados)", list);
+
+      if (!list.length) return { ok: true, sem_alteracoes: true };
+      const sId = (setorFilter.length > 0 && setorFilter.length !== (setoresOpts?.length ?? 0)) ? setorFilter[0] : undefined;
+      
+      try {
+        const res = await salvarFn({
+          data: {
+            competencia_id: competenciaId,
+            unidade_id: unidadeId,
+            setor_id: sId,
+            linhas: list,
+          },
+        });
+        console.log("DEBUG_SALVAMENTO: Resposta servidor", res);
+        return res;
+      } catch (error) {
+        console.log("DEBUG_SUPABASE: Erro recebido ao salvar", error);
+        throw error;
+      }
+    },
+    onSuccess: (r: any) => {
+      if (r?.sem_alteracoes) toast.info("Nenhuma alteração para salvar.");
+      else toast.success("Rascunho salvo.");
+      qc.invalidateQueries({ queryKey: ["folha-contratados", competenciaId, unidadeId] });
+      qc.invalidateQueries({ queryKey: ["frequencia-resumo", competenciaId, unidadeId] });
+    },
+    onError: (e: any) => toast.error(e?.message ?? "Falha ao salvar."),
+  });
+
+  const mEnviar = useMutation({
+    mutationFn: async () => {
+      const { offlineGuard } = await import("@/lib/offline-guard");
+      if (offlineGuard()) throw new Error("Offline");
+
+      // salva antes se houver alterações
+      const dirtyList = Object.values(linhas).filter((l) => l._dirty);
+      const sId = (setorFilter.length > 0 && setorFilter.length !== (setoresOpts?.length ?? 0)) ? setorFilter[0] : undefined;
+      if (dirtyList.length) {
+        await salvarFn({
+          data: {
+            competencia_id: competenciaId,
+            unidade_id: unidadeId,
+            setor_id: sId,
+            linhas: dirtyList.map((l) => ({
+              profissional_id: l.profissional_id,
+              status: l.status,
+              dias_trabalhados: l.dias_trabalhados,
+              dias_falta: l.dias_falta,
+              atestado: l.atestado,
+              he_50: l.he_50,
+              he_100: l.he_100,
+              adn: l.adn,
+              plantoes: l.plantoes,
+              sobreaviso: l.sobreaviso,
+              incentivo: l.incentivo,
+              observacoes: l.observacoes || null,
+            })),
+          },
+        });
+      }
+      return enviarFn({ data: { competencia_id: competenciaId, unidade_id: unidadeId, setor_id: sId } });
+    },
+    onSuccess: (r: any) => {
+      toast.success(`Enviado para aprovação (${r?.enviadas ?? 0} linhas).`);
+      setEnviarAberto(false);
+      qc.invalidateQueries({ queryKey: ["folha-contratados", competenciaId, unidadeId] });
+      qc.invalidateQueries({ queryKey: ["frequencia-resumo", competenciaId, unidadeId, "contratados"] });
+    },
+    onError: (e: any) => toast.error(e?.message ?? "Falha ao enviar."),
+  });
+
+  // Exportação PDF / Excel — só liberadas quando toda a folha estiver aprovada.
+  
+  const folhaAprovada = folhaStatusUnificado === "aprovada";
+  const podeEnviar = useMemo(() => {
+    if (!folha?.length) return false;
+    if (!(isDiretor || isMaster || perfilCodigo === "GESTOR") || !has("frequencia.enviar")) return false;
+    
+    // Se a folha já está em análise ou aprovada, não pode enviar de novo (a menos que seja devolvida)
+    if (folhaStatusUnificado === "em_analise" || folhaStatusUnificado === "enviada" || folhaStatusUnificado === "aprovada") return false;
+    
+    // Critério: Deve haver pelo menos uma linha em rascunho/devolvida/rejeitada
+    return folha.some((it: any) => 
+      !it.linha || 
+      it.linha.status === "rascunho" || 
+      it.linha.status === "devolvida" || 
+      it.linha.status === "rejeitada"
+    );
+  }, [folha, folhaStatusUnificado]);
+
+  function mapExportItens(): ItemContratado[] {
+    // Respeita os filtros aplicados na tela (competência já vem embutida
+    // na consulta; cargo/função/setor/situação/busca são aplicados em
+    // `filtradas` + `linhasFinais`). Assim, o PDF/Excel exportam somente
+    // as linhas visíveis atualmente na tabela.
+    const visiveis = linhasFinais.map((x) => ({ ...x.it, conf: x.conf }));
+    return visiveis.map((it: any) => {
+      // Mescla o que está digitado na tela (mesmo ainda não salvo) sobre o
+      // registro persistido, para o PDF/Excel refletirem exatamente a grade.
+      const editada = linhas[it.profissional.id];
+      const linha = editada
+        ? { ...(it.linha ?? {}), ...editada, status: editada.status ?? it.linha?.status ?? "rascunho" }
+        : it.linha;
+      const override = overrideSituacaoFolha(it.conf ?? it.profissional);
+      return {
+        profissional: {
+          matricula: it.profissional.matricula,
+          nome: it.profissional.nome,
+          cpf: it.profissional.cpf ?? null,
+          cargo: it.profissional.cargo,
+          setor: it.profissional.setor,
+          banco: it.profissional.banco,
+          agencia: it.profissional.agencia,
+          conta_corrente: it.profissional.conta_corrente,
+        },
+        linha: aplicarOverrideSituacao(linha as any, override, CAMPOS_NUM as any),
+      };
+    });
+  }
+
+  async function handleExportarExcel() {
+    if (!compSel) return;
+    try {
+      const { gerarExcelFolhaContratados } = await import("@/lib/excel-folha-contratados");
+      await gerarExcelFolhaContratados({
+        competencia: { mes: compSel.mes as number, ano: compSel.ano as number },
+        unidadeNome: unidadeSel
+          ? `${unidadeSel.sigla ? unidadeSel.sigla + " — " : ""}${unidadeSel.nome}`
+          : "",
+        itens: mapExportItens(),
+      });
+    } catch (e: any) {
+      toast.error(e?.message ?? "Falha ao gerar Excel.");
+    }
+  }
+
+  async function handleExportarPdf() {
+    if (!compSel) return;
+    try {
+      const { gerarFolhaContratadosOficial } = await import("@/lib/pdf-folha-contratados-oficial");
+      await gerarFolhaContratadosOficial({
+        competencia: { mes: compSel.mes as number, ano: compSel.ano as number },
+        unidadeNome: unidadeSel
+          ? `${unidadeSel.sigla ? unidadeSel.sigla + " — " : ""}${unidadeSel.nome}`
+          : "",
+        itens: mapExportItens(),
+        emitidoPor: me?.nome_completo ?? me?.email ?? "—",
+        unidadeId: unidadeSel?.id ?? null,
+        secretariaId: me?.secretaria_id ?? null,
+      });
+    } catch (e: any) {
+      toast.error(e?.message ?? "Falha ao gerar PDF.");
+    }
+  }
+
+  async function handleExportarPdfModeloCer() {
+    if (!compSel) return;
+    try {
+      const { gerarFolhaContratadosModeloCer } =
+        await import("@/lib/pdf-folha-contratados-modelo-cer");
+      await gerarFolhaContratadosModeloCer({
+        competencia: { mes: compSel.mes as number, ano: compSel.ano as number },
+        unidadeNome: unidadeSel
+          ? `${unidadeSel.sigla ? unidadeSel.sigla + " — " : ""}${unidadeSel.nome}`
+          : "",
+        itens: mapExportItens(),
+        emitidoPor: me?.nome_completo ?? me?.email ?? "—",
+      });
+    } catch (e: any) {
+      toast.error(e?.message ?? "Falha ao gerar PDF (Modelo Gestão-SMS).");
+    }
+  }
+
+  async function handleExportarExcelModeloCer() {
+    if (!compSel) return;
+    try {
+      const { gerarExcelFolhaContratadosModeloCer } =
+        await import("@/lib/excel-folha-contratados-modelo-cer");
+      await gerarExcelFolhaContratadosModeloCer({
+        competencia: { mes: compSel.mes as number, ano: compSel.ano as number },
+        unidadeNome: unidadeSel
+          ? `${unidadeSel.sigla ? unidadeSel.sigla + " — " : ""}${unidadeSel.nome}`
+          : "",
+        itens: mapExportItens(),
+      });
+    } catch (e: any) {
+      toast.error(e?.message ?? "Falha ao gerar Excel (Modelo Gestão-SMS).");
+    }
+  }
+
+  const filtradas = useMemo(() => {
+    if (!folha) return [];
+    const q = busca.trim().toLowerCase();
+    return folha.filter((it: any) => {
+      const p = it.profissional;
+      if (cargoFilter !== "todos" && p.cargo_id !== cargoFilter) return false;
+      if (funcaoFilter !== "todos" && p.funcao_id !== funcaoFilter) return false;
+      if (setorFilter.length > 0 && setorFilter.length !== (setoresOpts?.length ?? 0) && !setorFilter.includes(p.setor_id || "")) return false;
+      if (pendFilter !== "todos") {
+        const semConta = !p.banco || !p.agencia || !p.conta_corrente;
+        if (pendFilter === "sem_conta" && !semConta) return false;
+        if (pendFilter === "sem_cargo" && p.cargo) return false;
+        if (pendFilter === "sem_lotacao" && p.setor) return false;
+        if (pendFilter === "sem_matricula" && p.matricula) return false;
+        if (pendFilter === "sem_cpf" && p.cpf) return false;
+      }
+      if (!q) return true;
+      return (
+        p.nome.toLowerCase().includes(q) ||
+        (p.matricula ?? "").toLowerCase().includes(q) ||
+        (p.cpf ?? "").toLowerCase().includes(q) ||
+        (p.cargo ?? "").toLowerCase().includes(q)
+      );
+    });
+  }, [folha, busca, cargoFilter, funcaoFilter, setorFilter, pendFilter]);
+
+  const idsPagina = useMemo(
+    () => filtradas.map((it: any) => it.profissional.id as string),
+    [filtradas],
+  );
+  const { data: confMap } = useConferenciaProfissionais(idsPagina);
+
+  const linhasConferencia = useMemo(
+    () =>
+      filtradas.map((it: any) => {
+        const base: ProfConferencia = {
+          id: it.profissional.id,
+          nome: it.profissional.nome,
+          matricula: it.profissional.matricula ?? null,
+          cpf: it.profissional.cpf ?? null,
+          cargo: it.profissional.cargo ?? null,
+          setor: it.profissional.setor ?? null,
+          banco: it.profissional.banco ?? null,
+          agencia: it.profissional.agencia ?? null,
+          conta_corrente: it.profissional.conta_corrente ?? null,
+          cargo_id: it.profissional.cargo_id ?? null,
+          funcao_id: it.profissional.funcao_id ?? null,
+          setor_id: it.profissional.setor_id ?? null,
+          vinculo: "Contratado",
+        };
+        return { it, conf: mergeConferencia(base, confMap) };
+      }),
+    [filtradas, confMap],
+  );
+
+  const linhasFinais = useMemo(
+    () =>
+      situacaoFilter === "todas"
+        ? linhasConferencia
+        : linhasConferencia.filter((x) => derivarSituacao(x.conf) === situacaoFilter),
+    [linhasConferencia, situacaoFilter],
+  );
+
+  // Lotação = nome da unidade selecionada, exceto quando a unidade for do
+  // tipo UBS ("Atenção Básica") — nesse caso mostramos o setor do
+  // profissional. Regra pedida pela SMS: só a Atenção Básica é
+  // gerenciada por setor; nas demais a lotação é a própria unidade.
+  const tipoUnidade = String((unidadeSel as any)?.tipo_unidade ?? "").toUpperCase();
+  const isAtencaoBasica =
+    tipoUnidade === "UBS" || tipoUnidade.includes("ATEN"); /* ATENÇÃO BÁSICA / ATENCAO BASICA */
+  const lotacaoDe = (conf: ProfConferencia): { label: string; full: string } | null => {
+    if (isAtencaoBasica) {
+      const full = conf.setor ?? null;
+      if (full) {
+        const sigla = (conf as any).setor_sigla ?? null;
+        return { label: sigla || full, full };
+      }
+      // Sem setor vinculado: cai para o nome da unidade (regra SMS).
+      const uNome = (unidadeSel as any)?.nome ?? null;
+      if (!uNome) return null;
+      const uSigla = (unidadeSel as any)?.sigla ?? null;
+      return { label: uSigla || uNome, full: uNome };
+    }
+    const uNome = (unidadeSel as any)?.nome ?? conf.setor ?? null;
+    if (!uNome) return null;
+    const uSigla = (unidadeSel as any)?.sigla ?? null;
+    return { label: uSigla || uNome, full: uNome };
+  };
+
+  const rowsConf = useMemo(() => linhasConferencia.map((x) => x.conf), [linhasConferencia]);
+
+  function openDossie(p: ProfConferencia) {
+    setDossieProf(p);
+    setDossieOpen(true);
+  }
+
+  const canView = has("frequencia.visualizar");
+
+  /* ------- ERP grid derivados de UI ------- */
+  const FROZEN: FrozenCol[] = [
+    { key: "num", label: "Nº", width: 40 },
+    { key: "matricula", label: "Matrícula", width: 96 },
+    { key: "nome", label: "Nome", width: 240 },
+    { key: "cpf", label: "CPF", width: 120 },
+  ];
+  const L = frozenLeftMap(FROZEN);
+  const colKeysAll = useMemo(() => [...CAMPOS_NUM] as string[], []);
+  const rowIdsAll = useMemo(
+    () => linhasFinais.map((x: any) => x.it.profissional.id as string),
+    [linhasFinais],
+  );
+  // 3 (Nº/Matrícula/Nome) + CPF + Cargo + Lotação
+  // + CAMPOS_NUM (Dias, Faltas, ATT, HE50, HE100, ADN, Plantões, Sobreavisos, Incentivo)
+  // + Conta + Observações + Status
+  const colCount = 3 + 3 + CAMPOS_NUM.length + 3;
+
+  const totCampo = useMemo(() => {
+    const acc: Record<string, number> = {};
+    for (const k of colKeysAll) acc[k] = 0;
+    for (const { it } of linhasFinais) {
+      const l = linhas[it.profissional.id];
+      if (!l) continue;
+      for (const k of colKeysAll) {
+        const raw = (l as any)[k];
+        acc[k] += normalizarParaSoma(raw);
+      }
+    }
+    return acc;
+  }, [linhasFinais, linhas, colKeysAll]);
+
+  const kpi = useMemo(() => {
+    const sit = contarSituacoes(rowsConf);
+    return {
+      total: rowsConf.length,
+      ativos: sit.ativos,
+      ferias: sit.ferias,
+      licenca: sit.licenca,
+      afastados: sit.afastados,
+      pendencias: sit.pendencias,
+      naoElegiveis: sit.nao_elegiveis ?? 0,
+      totalHE50: totCampo.he_50 ?? 0,
+      totalHE100: totCampo.he_100 ?? 0,
+      totalPlantoes: totCampo.plantoes ?? 0,
+      totalFaltas: totCampo.dias_falta ?? 0,
+    };
+  }, [rowsConf, totCampo]);
+
+  const handlePaste = useCallback(
+    (rowId: string, colKey: string, matrix: string[][]) => {
+      const rStart = rowIdsAll.indexOf(rowId);
+      const cStart = colKeysAll.indexOf(colKey);
+      if (rStart < 0 || cStart < 0) return;
+      setLinhas((prev) => {
+        const next = { ...prev };
+        let touched = 0;
+        matrix.forEach((row, dr) => {
+          row.forEach((cell, dc) => {
+            const rId = rowIdsAll[rStart + dr];
+            const cKey = colKeysAll[cStart + dc];
+            if (!rId || !cKey) return;
+            const cur = next[rId];
+            if (!cur) return;
+            const raw = String(cell ?? "").trim();
+            const n = normalizarParaSoma(raw);
+            const finalValue = /^-?\d+([.,]\d+)?$/.test(raw) ? n : raw;
+            next[rId] = { ...cur, [cKey]: finalValue, _dirty: true };
+            touched++;
+          });
+        });
+        if (touched) toast.success(`${touched} valor(es) colado(s).`);
+        return next;
+      });
+    },
+    [rowIdsAll, colKeysAll],
+  );
+
+  const validateGeneric = (v: number | string) => {
+    const n = normalizarParaSoma(v);
+    return !isNaN(n) && n < 0 ? "Valor negativo" : null;
+  };
+  const validateHoras = (v: number | string) => {
+    const n = normalizarParaSoma(v);
+    return !isNaN(n) && n > 400 ? "Valor incomum (> 400h)" : null;
+  };
+  const validateFalta = (v: number | string) => {
+    const n = normalizarParaSoma(v);
+    return !isNaN(n) && n > 31 ? "Faltas acima de 31 dias" : null;
+  };
+
+  function focarLinha(rowId: string) {
+    const tr = document.querySelector<HTMLTableRowElement>(
+      `.erp-grid tr[data-row-id="${rowId.replace(/"/g, "")}"]`,
+    );
+    tr?.scrollIntoView({ block: "center", behavior: "smooth" });
+    tr?.querySelector<HTMLInputElement>(".erp-cell-input")?.focus();
+  }
+
+  const [selectedRowId] = useSelectedErpRow();
+
+  /** Ícone antes do nome conforme situação funcional. */
+  function IconeSituacao({ situ }: { situ: string }) {
+    const cls = "h-3.5 w-3.5 shrink-0";
+    if (situ === "ferias") return <Palmtree className={cn(cls, "text-info")} />;
+    if (situ === "licenca")
+      return <HeartPulse className={cn(cls, "text-warning-soft-foreground")} />;
+    if (situ === "afastado") return <AlertOctagon className={cn(cls, "text-destructive")} />;
+    if (situ === "cedido")
+      return <ArrowRightLeft className={cn(cls, "text-warning-soft-foreground")} />;
+    if (situ === "desligado" || situ === "inativo")
+      return <Ban className={cn(cls, "text-muted-foreground")} />;
+    return null;
+  }
+
+  const PEND_OPTS: Array<{ id: typeof pendFilter; label: string }> = [
+    { id: "todos", label: "Sem pendências" },
+    { id: "sem_conta", label: "Sem conta bancária" },
+    { id: "sem_cargo", label: "Sem cargo" },
+    { id: "sem_lotacao", label: "Sem lotação" },
+    { id: "sem_matricula", label: "Sem matrícula" },
+    { id: "sem_cpf", label: "Sem CPF" },
+  ];
+
+  if (!canView) {
+    return (
+      <div className="p-6">
+        <h1 className="text-xl font-semibold mb-2">Acesso negado</h1>
+        <p className="text-muted-foreground">Você não tem permissão para visualizar frequências.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-4 md:p-6 space-y-4">
+      <FolhaBreadcrumb current="Folha Pagamento — Contratados" />
+      <header className="flex flex-col md:flex-row md:items-end md:justify-between gap-3">
+        <div>
+          <div className="flex items-center gap-2">
+            <FileSpreadsheet className="h-5 w-5 text-primary" />
+            <h1 className="text-2xl font-semibold">Frequência — Contratados</h1>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            Folha de contratados no formato HMO — uma linha por profissional, com dados bancários
+            para conferência da folha de pagamento.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            variant="outline"
+            onClick={() => mSalvar.mutate()}
+            disabled={!canEdit || mSalvar.isPending}
+          >
+            <Save className="mr-1.5 h-4 w-4" /> Salvar rascunho
+          </Button>
+          <Button
+            onClick={() => setEnviarAberto(true)}
+            disabled={!podeEnviar || mEnviar.isPending}
+          >
+            <Send className="mr-1.5 h-4 w-4" /> Enviar para análise
+          </Button>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span>
+                  <Button variant="secondary" onClick={handleExportarPdf} disabled={!folhaAprovada}>
+                    <FileDown className="mr-1.5 h-4 w-4" /> PDF Oficial
+                  </Button>
+                </span>
+              </TooltipTrigger>
+              {!folhaAprovada && <TooltipContent>Disponível somente após aprovação</TooltipContent>}
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span>
+                  <Button variant="outline" onClick={handleExportarExcel} disabled={!folhaAprovada}>
+                    <Download className="mr-1.5 h-4 w-4" /> Exportar Excel
+                  </Button>
+                </span>
+              </TooltipTrigger>
+              {!folhaAprovada && <TooltipContent>Disponível somente após aprovação</TooltipContent>}
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span>
+                  <Button variant="secondary" onClick={handleExportarPdfModeloCer}>
+                    <FileDown className="mr-1.5 h-4 w-4" /> PDF Modelo Gestão-SMS
+                  </Button>
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>Réplica do modelo oficial da SMS (com brasões)</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span>
+                  <Button variant="outline" onClick={handleExportarExcelModeloCer}>
+                    <FileSpreadsheet className="mr-1.5 h-4 w-4" /> Excel Modelo Gestão-SMS
+                  </Button>
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>Réplica do modelo oficial da SMS (com brasões)</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        </div>
+      </header>
+
+      <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3 items-end">
+        <div>
+          <label className="text-xs text-muted-foreground">Competência</label>
+          <Select value={competenciaId} onValueChange={setCompetenciaId}>
+            <SelectTrigger>
+              <SelectValue placeholder="Selecionar" />
+            </SelectTrigger>
+            <SelectContent>
+              {competencias?.map((c) => (
+                <SelectItem key={c.id} value={c.id}>
+                  {MESES[(c.mes ?? 1) - 1]}/{c.ano}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div>
+          <label className="text-xs text-muted-foreground">Unidade</label>
+          <UnidadeFilter
+            value={unidadeId}
+            onChange={(v) => setUnidadeId(v)}
+            placeholder="Selecionar unidade"
+            className="w-[200px]"
+          />
+
+        </div>
+        <div>
+          <label className="text-xs text-muted-foreground">Buscar</label>
+          <div className="relative">
+            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+            <Input
+              value={busca}
+              onChange={(e) => setBusca(e.target.value)}
+              placeholder="Nome, matrícula ou cargo"
+              className="pl-8"
+            />
+          </div>
+        </div>
+        <div>
+          <label className="text-xs text-muted-foreground">Cargo</label>
+          <Select value={cargoFilter} onValueChange={setCargoFilter}>
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="todos">Todos</SelectItem>
+              {cargosOpts?.map((c: any) => (
+                <SelectItem key={c.id} value={c.id}>
+                  {c.nome}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div>
+          <label className="text-xs text-muted-foreground">Função</label>
+          <Select value={funcaoFilter} onValueChange={setFuncaoFilter}>
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="todos">Todas</SelectItem>
+              {funcoesOpts?.map((f: any) => (
+                <SelectItem key={f.id} value={f.id}>
+                  {f.nome}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="w-[200px]">
+          <label className="text-xs text-muted-foreground block mb-1">Setor</label>
+          <MultiSelect
+            options={(setoresOpts ?? []).map((s: any) => ({ label: s.nome, value: s.id }))}
+            onValueChange={setSetorFilter}
+            defaultValue={setorFilter}
+            placeholder={unidadeId ? "Selecionar Setores" : "Selecione uma unidade"}
+            maxCount={2}
+            disabled={!unidadeId}
+          />
+        </div>
+      </div>
+
+      {compFechada && (
+        <div className="rounded-md border border-warning/40 bg-warning-soft text-warning-soft-foreground text-sm px-3 py-2">
+          Competência encerrada — folha em modo somente leitura.
+        </div>
+      )}
+
+      {folhaStatusUnificado === "devolvida" && (
+        <Alert variant="destructive" className="mb-6 border-amber-200 bg-amber-50 text-amber-900">
+          <AlertOctagon className="h-4 w-4 stroke-amber-600" />
+          <AlertTitle className="font-semibold text-amber-800">Folha devolvida para correção</AlertTitle>
+          <AlertDescription className="text-amber-700">
+            Esta frequência foi devolvida pelo analista e está aberta para edição.
+            {ultimaAcao?.observacoes && (
+              <div className="mt-2 rounded bg-amber-100/50 p-2 text-sm italic border border-amber-200">
+                <strong>Motivo:</strong> {ultimaAcao.observacoes}
+              </div>
+            )}
+          </AlertDescription>
+        </Alert>
+      )}
+
+      <div className="flex items-center justify-between gap-4">
+        <KpiFolhaBar k={kpi} className="flex-1" />
+        <div className="shrink-0 flex items-center gap-2 px-4 py-2 rounded-lg border bg-card shadow-sm">
+          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+            Status da Unidade:
+          </span>
+          <StatusBadge domain="frequencia" value={folhaStatusUnificado} />
+        </div>
+      </div>
+      <ResumoDiasFaltasAtt
+        totais={{
+          dias: totCampo.dias_trabalhados ?? 0,
+          faltas: totCampo.dias_falta ?? 0,
+          att: totCampo.atestado ?? 0,
+        }}
+        selecionado={(() => {
+          if (!selectedRowId) return null;
+          const l = linhas[selectedRowId];
+          const p = rowsConf.find((r) => r.id === selectedRowId);
+          if (!l || !p) return null;
+          return {
+            nome: p.nome ?? "—",
+            valores: {
+              dias: Number(l.dias_trabalhados ?? 0),
+              faltas: Number(l.dias_falta ?? 0),
+              att: Number(l.atestado ?? 0),
+            },
+          };
+        })()}
+      />
+      <div className="space-y-2 rounded-lg border bg-card p-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <InconsistenciasPanel rows={rowsConf} onGoto={focarLinha} />
+        </div>
+        <SituacaoFilter value={situacaoFilter} onChange={setSituacaoFilter} />
+        <div className="flex flex-wrap items-center gap-1.5">
+          <FilterIcon className="mr-0.5 h-3.5 w-3.5 text-muted-foreground" />
+          {PEND_OPTS.map((o) => (
+            <button
+              key={o.id}
+              type="button"
+              onClick={() => setPendFilter(o.id)}
+              className={cn(
+                "rounded-full px-2.5 py-1 text-xs ring-1 transition",
+                pendFilter === o.id
+                  ? "bg-primary text-primary-foreground ring-primary"
+                  : "bg-white text-slate-700 ring-slate-200 hover:bg-slate-50",
+              )}
+            >
+              {o.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="erp-grid">
+        <ErpGridProvider rowIds={rowIdsAll} colKeys={colKeysAll} onPaste={handlePaste}>
+          <table>
+            <thead>
+              <tr>
+                <th className="erp-sticky" style={{ width: 40, textAlign: "center", left: L.num }}>
+                  Nº
+                </th>
+                <th
+                  className="erp-sticky"
+                  style={{ width: 96, textAlign: "center", left: L.matricula }}
+                >
+                  Matrícula
+                </th>
+                <th className="erp-sticky" style={{ width: 240, textAlign: "left", left: L.nome }}>
+                  Nome
+                </th>
+                <th
+                  className="erp-sticky erp-sticky-last"
+                  style={{ textAlign: "center", width: 120, left: L.cpf }}
+                >
+                  CPF
+                </th>
+                <th style={{ textAlign: "left", minWidth: 140 }}>Cargo</th>
+                <th style={{ textAlign: "left", minWidth: 140 }}>Lotação</th>
+                <th style={{ textAlign: "center", width: 48 }}>Dias</th>
+                <th style={{ textAlign: "center", width: 48 }}>Faltas</th>
+                <th style={{ textAlign: "center", width: 48 }}>ATT</th>
+                <th style={{ textAlign: "center", width: 48 }}>HE 50%</th>
+                <th style={{ textAlign: "center", width: 48 }}>HE 100%</th>
+                <th style={{ textAlign: "center", width: 48 }}>ADN</th>
+                <th style={{ textAlign: "center", width: 48 }}>Plantões</th>
+                <th style={{ textAlign: "center", width: 48 }}>Sobreavisos</th>
+                <th style={{ textAlign: "center", width: 48 }}>Incentivo</th>
+                <th style={{ textAlign: "left", minWidth: 200, whiteSpace: "nowrap" }}>Conta</th>
+                <th style={{ textAlign: "center", width: 96 }}>Observações</th>
+                <th style={{ textAlign: "center", width: 110 }}>Status</th>
+              </tr>
+            </thead>
+            <ErpTbody>
+              {isFetching && (
+                <tr>
+                  <td colSpan={colCount} className="px-3 py-6 text-center text-muted-foreground">
+                    Carregando…
+                  </td>
+                </tr>
+              )}
+              {!isFetching && linhasFinais.length === 0 && (
+                <tr>
+                  <td colSpan={colCount} className="px-3 py-6 text-center text-muted-foreground">
+                    Nenhum profissional contratado nesta unidade.
+                  </td>
+                </tr>
+              )}
+              {linhasFinais.map(({ it, conf }, idx) => {
+                const p = it.profissional;
+                const l = linhas[p.id];
+                if (!l) return null;
+                const ro = readonlyLinha(l);
+                const situ = derivarSituacao(conf);
+                const overrideSituacao = overrideSituacaoFolha(conf);
+                const semConta = !p.banco && !p.agencia && !p.conta_corrente;
+                const semContaConf = !conf.banco && !conf.agencia && !conf.conta_corrente;
+                return (
+                  <tr key={p.id} data-row-id={p.id} data-situacao={situ}>
+                    <td
+                      className="erp-sticky text-center text-muted-foreground font-mono tabular-nums"
+                      style={{ width: 40, left: L.num }}
+                    >
+                      {idx + 1}
+                    </td>
+                    <td
+                      className="erp-sticky text-center font-mono"
+                      style={{ width: 96, left: L.matricula }}
+                    >
+                      {p.matricula ?? "—"}
+                    </td>
+                    <td
+                      className="erp-sticky font-medium text-slate-900"
+                      style={{ width: 240, left: L.nome }}
+                    >
+                      <div className="flex items-center gap-1.5">
+                        <IconeSituacao situ={situ} />
+                        <div className="min-w-0 flex-1 truncate">
+                          <ProfissionalNomeCell prof={conf} onOpenDossie={openDossie} />
+                        </div>
+                      </div>
+                    </td>
+                    <td
+                      className="erp-sticky erp-sticky-last text-center text-muted-foreground font-mono"
+                      style={{ width: 120, left: L.cpf }}
+                    >
+                      {p.cpf ?? "—"}
+                    </td>
+                    <td
+                      className="text-slate-700 truncate"
+                      style={{ maxWidth: 200 }}
+                      title={p.cargo ?? undefined}
+                    >
+                      {p.cargo ?? "—"}
+                    </td>
+                    {(() => {
+                      const lot = lotacaoDe(conf);
+                      return (
+                        <td
+                          className="text-slate-700 truncate"
+                          style={{ maxWidth: 200 }}
+                          title={lot?.full ?? undefined}
+                        >
+                          {lot?.label ?? "—"}
+                        </td>
+                      );
+                    })()}
+                    {CAMPOS_NUM.map((c) => {
+                      const isDias = c === "dias_trabalhados";
+                      const isFalta = c === "dias_falta";
+                      const isHora = c === "he_50" || c === "he_100" || c === "adn";
+                      if (overrideSituacao) {
+                        return (
+                          <td key={c} className="text-center">
+                            <input
+                              type="text"
+                              readOnly
+                              disabled
+                              value={overrideSituacao}
+                              title={overrideSituacao}
+                              className="w-full truncate rounded border border-slate-200 bg-slate-100 px-1 text-center text-[10px] font-semibold text-slate-600"
+                            />
+                          </td>
+                        );
+                      }
+                      return (
+                        <td key={c} className="text-center font-mono">
+                          <NumberCell
+                            rowId={p.id}
+                            colKey={c}
+                            value={(l as any)[c] ?? ""}
+                            disabled={ro}
+                            decimals={0}
+                            validate={
+                              isDias
+                                ? validateFalta
+                                : isFalta
+                                  ? validateFalta
+                                  : isHora
+                                    ? validateHoras
+                                    : validateGeneric
+                            }
+                            onChange={(v) => updateCampo(p.id, c, v)}
+                          />
+                        </td>
+                      );
+                    })}
+                    <td
+                      className={cn(
+                        "whitespace-nowrap text-[12px]",
+                        semContaConf ? "text-destructive" : "text-slate-700",
+                      )}
+                      title={
+                        semContaConf
+                          ? undefined
+                          : formatContaBancaria(conf.banco, conf.agencia, conf.conta_corrente)
+                      }
+                    >
+                      {semContaConf
+                        ? "—"
+                        : formatContaBancaria(conf.banco, conf.agencia, conf.conta_corrente)}
+                    </td>
+                    <td className="text-center">
+                      <TextCell
+                        rowId={p.id}
+                        value={l.observacoes ?? ""}
+                        disabled={ro}
+                        onChange={(v) => updateCampo(p.id, "observacoes", v)}
+                        placeholder="—"
+                      />
+                    </td>
+                    <td className="text-center">
+                      <StatusBadge domain="frequencia" value={l.status ?? "rascunho"} />
+                    </td>
+                  </tr>
+                );
+              })}
+            </ErpTbody>
+            <tfoot>
+              <tr>
+                <td className="erp-sticky" style={{ width: 40, left: L.num }}></td>
+                <td className="erp-sticky" style={{ width: 96, left: L.matricula }}></td>
+                <td className="erp-sticky" style={{ width: 240, left: L.nome }}>
+                  Totais
+                </td>
+                <td className="erp-sticky erp-sticky-last" style={{ width: 120, left: L.cpf }}></td>
+                <td colSpan={2}></td>
+                {CAMPOS_NUM.map((c) => (
+                  <td key={c} className="text-center font-mono">
+                    {(totCampo[c] ?? 0).toLocaleString("pt-BR", { maximumFractionDigits: 2 })}
+                  </td>
+                ))}
+                <td></td>
+                <td></td>
+                <td></td>
+              </tr>
+            </tfoot>
+          </table>
+        </ErpGridProvider>
+      </div>
+
+      <p className="text-xs text-muted-foreground">
+        A coluna <strong>Conta</strong> (Banco / AG / CC) e <strong>CPF</strong> são somente leitura
+        — são atualizados no cadastro do profissional. A coluna <strong>Dias</strong> vem zerada por
+        padrão e deve ser preenchida manualmente pelo Diretor/Gestor (0 a 31).
+      </p>
+
+      <ProfissionalEdicaoModal
+        prof={dossieProf}
+        linha={dossieProf ? linhas[dossieProf.id] : undefined}
+        open={dossieOpen}
+        onOpenChange={setDossieOpen}
+        canEdit={canEdit}
+        statusValue={dossieProf ? linhas[dossieProf.id]?.status : undefined}
+        onStatusChange={(v) => {
+          if (!dossieProf) return;
+          updateCampo(dossieProf.id, "status" as keyof LinhaState, v);
+        }}
+        campos={[
+          { key: "dias_trabalhados", label: "Dias Trabalhados", min: 0, max: 31 },
+          { key: "dias_falta", label: "Faltas", min: 0, max: 31 },
+          { key: "atestado", label: "Atestado (ATT)", min: 0, max: 31 },
+          { key: "he_50", label: "HE 50%" },
+          { key: "he_100", label: "HE 100%" },
+          { key: "adn", label: "Adic. Noturno" },
+          { key: "plantoes", label: "Plantões" },
+          { key: "sobreaviso", label: "Sobreaviso" },
+          { key: "incentivo", label: "Incentivo" },
+        ]}
+        onChangeCampo={(campo, valor) => {
+          if (!dossieProf) return;
+          updateCampo(dossieProf.id, campo as keyof LinhaState, valor);
+        }}
+        onSave={async () => {
+          await mSalvar.mutateAsync();
+          setDossieOpen(false);
+        }}
+        saving={mSalvar.isPending}
+        anexosSlot={
+          <LinhaAnexos
+            frequenciaProfissionalId={
+              dossieProf
+                ? ((folha as any[] | undefined)?.find(
+                    (it: any) => it.profissional.id === dossieProf.id,
+                  )?.linha?.id ?? null)
+                : null
+            }
+            unidadeId={unidadeId}
+            canEdit={canEdit}
+            competenciaId={competenciaId}
+            profissionalId={dossieProf?.id ?? null}
+            folha="contratados"
+          />
+        }
+      />
+      <EnviarFolhaDialog
+        open={enviarAberto}
+        onOpenChange={setEnviarAberto}
+        competenciaId={competenciaId}
+        unidadeId={unidadeId}
+        folha="contratados"
+        statusLinha={folhaStatusUnificado}
+        setorId={setorFilter.length === 1 ? setorFilter[0] : null}
+        enviando={mEnviar.isPending}
+        onConfirm={() => mEnviar.mutate()}
+      />
+    </div>
+  );
+}

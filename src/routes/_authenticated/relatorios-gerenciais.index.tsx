@@ -1,0 +1,118 @@
+import { ErrorComponent } from "@/components/shared/ErrorComponent";
+import { createFileRoute, Link } from "@tanstack/react-router";
+import {
+  Users,
+  Building2,
+  Network,
+  Briefcase,
+  Tag,
+  GitBranch,
+  BarChart3,
+  Coins,
+  ShieldCheck,
+  Zap,
+} from "lucide-react";
+import type { LucideIcon } from "lucide-react";
+import { BotaoRelatorioSalarialRapido } from "@/components/relatorios/BotaoRelatorioSalarialRapido";
+import { useCurrentUser } from "@/hooks/use-permissions";
+
+export const Route = createFileRoute("/_authenticated/relatorios-gerenciais/")({
+  component: HubGerenciais,
+});
+
+type Card = { to: string; search?: any; title: string; desc: string; icon: LucideIcon };
+
+const CARDS: Card[] = [
+  {
+    to: "/relatorios-gerenciais/profissionais",
+    title: "Profissionais",
+    desc: "Cadastro geral, por unidade/setor/cargo/função/vínculo, status e pendências cadastrais.",
+    icon: Users,
+  },
+  {
+    to: "/relatorios-gerenciais/unidades",
+    title: "Unidades",
+    desc: "Relação, por tipo, ativas/inativas, sem diretor/coordenador/telefone/CNES/CNPJ/email, lotação.",
+    icon: Building2,
+  },
+  {
+    to: "/relatorios-gerenciais/setores",
+    title: "Setores",
+    desc: "Relação, por unidade, sem coordenador, sem profissionais, com apenas 1 servidor, distribuição.",
+    icon: Network,
+  },
+  {
+    to: "/relatorios-gerenciais/cargos",
+    title: "Cargos",
+    desc: "Relação, quantidade por cargo, cargos sem profissionais, mais utilizados.",
+    icon: Briefcase,
+  },
+  {
+    to: "/relatorios-gerenciais/funcoes",
+    title: "Funções",
+    desc: "Relação, quantidade por função, funções sem profissionais.",
+    icon: Tag,
+  },
+  {
+    to: "/relatorios-gerenciais/estrutura",
+    title: "Estrutura Organizacional",
+    desc: "Organograma Diretor → Coordenador → Profissionais. Responsáveis por unidade e setor.",
+    icon: GitBranch,
+  },
+  {
+    to: "/relatorios-gerenciais/piso",
+    title: "Piso da Enfermagem",
+    desc: "Piso Efetivos/Contratados, comparativo entre meses, divergências, histórico e resumo financeiro.",
+    icon: Coins,
+  },
+  {
+    to: "/relatorios-gerenciais/auditoria",
+    title: "Auditoria",
+    desc: "Quem alterou cadastro, unidade, setor, cargo, função, usuário, importou/recalculou piso, excluiu.",
+    icon: ShieldCheck,
+  },
+  {
+    to: "/relatorio-inteligente",
+    search: { mode: "salarios" },
+    title: "Dados Salariais",
+    desc: "Salário base, bruto, líquido e demais rubricas cadastrais por profissional.",
+    icon: Coins,
+  },
+];
+
+function HubGerenciais() {
+  const { data: user } = useCurrentUser();
+  const isMaster = !!user?.is_master;
+
+  return (
+    <div className="space-y-4">
+      <div className="flex justify-between items-center">
+        <p className="text-sm text-muted-foreground">
+          {isMaster 
+            ? "A Secretaria conta com diversos módulos de controle gerencial." 
+            : "A Unidade conta com módulos de controle gerencial adaptados ao seu escopo."}
+        </p>
+        <BotaoRelatorioSalarialRapido />
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      {CARDS.map((c) => (
+        <Link
+          key={c.to}
+          to={c.to}
+          search={c.search}
+          className="group rounded-lg border bg-card p-4 transition-colors hover:border-primary/60 hover:bg-muted/50"
+        >
+          <div className="mb-2 flex items-center gap-2">
+            <c.icon className="h-5 w-5 text-primary" />
+            <div className="font-semibold text-foreground">{c.title}</div>
+          </div>
+          <p className="text-sm text-muted-foreground">{c.desc}</p>
+          <div className="mt-3 text-xs font-medium text-primary opacity-80 group-hover:opacity-100">
+            Abrir →
+          </div>
+        </Link>
+      ))}
+      </div>
+    </div>
+  );
+}

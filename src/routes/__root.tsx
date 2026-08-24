@@ -7,14 +7,24 @@ import {
   HeadContent,
   Scripts,
 } from "@tanstack/react-router";
-import { useEffect, type ReactNode } from "react";
+import { useEffect, type ReactNode, useMemo } from "react";
 
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
+import { installBrowserErrorHandlers, logger } from "../lib/logger";
+import { registerServiceWorker } from "../lib/pwa";
+import { Toaster } from "@/components/ui/sonner";
+import { supabase } from "@/integrations/supabase/client";
+import { ConfirmProvider } from "@/components/shared/ConfirmDialog";
+import { NetworkBanner } from "@/components/shared/NetworkBanner";
+import { TermoAceiteProvider } from "@/components/documentos/termo-aceite-provider";
+import { PdfPosicaoProvider } from "@/components/pdf/PdfPosicaoProvider";
+
+import { AvisoModal } from "@/components/mural/AvisoModal";
 
 function NotFoundComponent() {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background px-4">
+    <div className="flex min-h-dvh items-center justify-center bg-background px-4">
       <div className="max-w-md text-center">
         <h1 className="text-7xl font-bold text-foreground">404</h1>
         <h2 className="mt-4 text-xl font-semibold text-foreground">Page not found</h2>
@@ -35,14 +45,14 @@ function NotFoundComponent() {
 }
 
 function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
-  console.error(error);
   const router = useRouter();
   useEffect(() => {
+    logger.error("route.error_boundary", { error });
     reportLovableError(error, { boundary: "tanstack_root_error_component" });
   }, [error]);
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background px-4">
+    <div className="flex min-h-dvh items-center justify-center bg-background px-4">
       <div className="max-w-md text-center">
         <h1 className="text-xl font-semibold tracking-tight text-foreground">
           This page didn't load
@@ -77,23 +87,44 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Lovable App" },
-      { name: "description", content: "Lovable Generated Project" },
-      { name: "author", content: "Lovable" },
-      { property: "og:title", content: "Lovable App" },
-      { property: "og:description", content: "Lovable Generated Project" },
+      { title: "GESTÃO SAÚDE ORIXIMINÁ - SMS" },
+      {
+        name: "description",
+        content:
+          "Sistema de Gestão de Frequência e Folha da Secretaria Municipal de Saúde de Oriximiná",
+      },
+      { name: "author", content: "SMS Oriximiná" },
+      { property: "og:title", content: "GESTÃO SAÚDE ORIXIMINÁ - SMS" },
+      {
+        property: "og:description",
+        content:
+          "Sistema de Gestão de Frequência e Folha da Secretaria Municipal de Saúde de Oriximiná",
+      },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
       { name: "twitter:site", content: "@Lovable" },
+      { name: "theme-color", content: "#0d9488" },
+      { name: "apple-mobile-web-app-capable", content: "yes" },
+      { name: "apple-mobile-web-app-status-bar-style", content: "default" },
+      { name: "apple-mobile-web-app-title", content: "SMS Oriximiná" },
     ],
     links: [
       {
         rel: "stylesheet",
         href: appCss,
       },
-      { rel: "icon", href: "/favicon.ico", type: "image/x-icon" },
+      { rel: "preconnect", href: "https://fonts.googleapis.com" },
+      { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
+      {
+        rel: "stylesheet",
+        href: "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Manrope:wght@500;600;700;800&family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap",
+      },
+      { rel: "icon", href: "/favicon.png", type: "image/png" },
+      { rel: "manifest", href: "/manifest.webmanifest" },
+      { rel: "apple-touch-icon", href: "/apple-touch-icon.png" },
     ],
   }),
+
   shellComponent: RootShell,
   component: RootComponent,
   notFoundComponent: NotFoundComponent,
@@ -107,6 +138,7 @@ function RootShell({ children }: { children: ReactNode }) {
         <HeadContent />
       </head>
       <body>
+         {" "}
         {children}
         <Scripts />
       </body>
@@ -116,11 +148,56 @@ function RootShell({ children }: { children: ReactNode }) {
 
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
+  const router = useRouter();
+
+  useEffect(() => {
+    installBrowserErrorHandlers();
+    registerServiceWorker();
+    const { data } = supabase.auth.onAuthStateChange(async (event) => {
+      if (event !== "SIGNED_IN" && event !== "SIGNED_OUT" && event !== "USER_UPDATED") return;
+      
+      if (event === "SIGNED_OUT") {
+        // LGPD: Purge compulsório no logout
+        queryClient.clear();
+        localStorage.clear();
+        sessionStorage.clear();
+        if ('caches' in window) {
+          const names = await caches.keys();
+          await Promise.all(names.map(name => caches.delete(name)));
+        }
+      } else {
+        void queryClient.invalidateQueries();
+      }
+      
+      void router.invalidate();
+    });
+
+    return () => data.subscription.unsubscribe();
+  }, [queryClient, router]);
+
+  const supabaseConfigScript = useMemo(
+    () =>
+      `window.__SUPABASE_CONFIG__=${JSON.stringify({
+        url: import.meta.env.VITE_SUPABASE_URL ?? "",
+        publishableKey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ?? "",
+      })};`,
+    [],
+  );
 
   return (
     <QueryClientProvider client={queryClient}>
-      {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
-      <Outlet />
+      <ConfirmProvider>
+        <TermoAceiteProvider>
+          <PdfPosicaoProvider>
+            <script dangerouslySetInnerHTML={{ __html: supabaseConfigScript }} />
+            <NetworkBanner />
+            <Outlet />
+            <AvisoModal />
+            <Toaster richColors position="top-right" />
+          </PdfPosicaoProvider>
+        </TermoAceiteProvider>
+      </ConfirmProvider>
+
     </QueryClientProvider>
   );
 }
