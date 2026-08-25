@@ -405,7 +405,7 @@ function CompetenciaForm({
       setDescricao("");
       setObservacoes("");
     }
-  }, [editing]);
+  }, [editing, now]);
 
   // Recalcula o período automaticamente ao alterar mês/ano no modo criação.
   useEffect(() => {
