@@ -486,7 +486,7 @@ function drawProfissionalRow(doc: jsPDF, y: number, item: ItemFolha): number {
         const maxWidth = c.w - PADDING_CELULA * 2;
 
         doc.setFontSize(fontSize);
-        const linhas = (doc.splitTextToSize(val, maxWidth) as string[]).slice(
+        const linhas = quebrarTextoPorLargura(doc, val, maxWidth, fontSize).slice(
           0,
           Math.max(1, Math.floor((h - PADDING_CELULA * 2) / lineHeight)),
         );
