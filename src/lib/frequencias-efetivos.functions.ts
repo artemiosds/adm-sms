@@ -398,7 +398,7 @@ export const salvarFolhaEfetivos = createServerFn({ method: "POST" })
         tipo: "efetivos",
         competencia_id: data.competencia_id,
         unidade_id: data.unidade_id,
-        setor_id: Array.isArray(data.setor_id) ? undefined : data.setor_id,
+        setor_id: normalizarSetorId(data.setor_id) ?? undefined,
       }
     });
 
@@ -484,7 +484,7 @@ export const enviarFolhaEfetivos = createServerFn({ method: "POST" })
         tipo: "efetivos",
         competencia_id: data.competencia_id,
         unidade_id: data.unidade_id,
-        setor_id: Array.isArray(data.setor_id) ? undefined : data.setor_id,
+        setor_id: normalizarSetorId(data.setor_id) ?? undefined,
       }
     });
 
