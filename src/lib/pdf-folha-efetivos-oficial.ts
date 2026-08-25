@@ -130,6 +130,58 @@ function fmt(v: number | string | null | undefined): string {
   return x.toFixed(2).replace(".", ",");
 }
 
+function ptToMm(pt: number): number {
+  return pt * 0.352778;
+}
+
+function calcularAlturaLinha(doc: jsPDF, item: ItemFolha): number {
+  const t = item.totais;
+  const situacao = item.profissional.situacao;
+  const isStatus = situacao && situacao !== "Ativo";
+
+  const valores: Record<string, string> = {
+    proj: fmt(item.profissional.proj),
+    hp: fmt(item.profissional.h_p),
+    ch: fmt(item.profissional.c_h),
+    jorn: fmt(item.profissional.jorn),
+    dias: isStatus ? situacao : fmt(t.dias_trabalhados),
+    falta: isStatus ? situacao : fmt(t.dias_falta),
+    att: isStatus ? situacao : fmt(t.atestado),
+    mat: isStatus ? situacao : fmt(t.maternidade),
+    he50: isStatus ? situacao : fmt(t.he_50),
+    he100: isStatus ? situacao : fmt(t.he_100),
+    terco: isStatus ? situacao : (t.ferias_terco ? "X" : ""),
+    integ: isStatus ? situacao : fmt(t.ferias_integral),
+    sal: isStatus ? situacao : fmt(t.sal_sub_h),
+    adic: isStatus ? situacao : fmt(t.adicional_noturno),
+    aulas: isStatus ? situacao : fmt(t.aulas_suplementares),
+    plantao: isStatus ? situacao : fmt(t.plantao),
+    sobre: isStatus ? situacao : fmt(t.sobreaviso),
+    incent: isStatus ? situacao : fmt(t.incentivo),
+  };
+
+  let maxAltura = LINHA_ALTURA;
+
+  for (const c of COLS) {
+    if (c.key === "matricula" || c.key === "nome") continue;
+    const val = valores[c.key] ?? "";
+    if (!val) continue;
+
+    const fontSize = isStatus && val === situacao ? 6 : 7.5;
+    const lineHeight = ptToMm(fontSize) * 1.1;
+    const maxWidth = c.w - PADDING_CELULA * 2;
+    doc.setFontSize(fontSize);
+    const linhas = (doc.splitTextToSize(val, maxWidth) as string[]).slice(
+      0,
+      Math.max(1, Math.floor((LINHA_ALTURA_MAX - PADDING_CELULA * 2) / lineHeight)),
+    );
+    const alturaNecessaria = linhas.length * lineHeight + PADDING_CELULA * 2;
+    maxAltura = Math.max(maxAltura, alturaNecessaria);
+  }
+
+  return Math.min(maxAltura, LINHA_ALTURA_MAX);
+}
+
 function drawInstitutionalBox(
   doc: jsPDF,
   info: { data: MunicipioInfo | null; logoData: string | null },
