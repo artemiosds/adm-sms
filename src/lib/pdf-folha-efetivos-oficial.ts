@@ -222,7 +222,7 @@ function calcularAlturaLinha(doc: jsPDF, item: ItemFolha): number {
     const val = valores[c.key] ?? "";
     if (!val) continue;
 
-    const fontSize = isStatus && val === situacao ? 6 : 7.5;
+    const fontSize = isStatus && val === situacao ? 5.5 : 7.5;
     const lineHeight = ptToMm(fontSize) * 1.1;
     const maxWidth = c.w - PADDING_CELULA * 2;
     doc.setFontSize(fontSize);
