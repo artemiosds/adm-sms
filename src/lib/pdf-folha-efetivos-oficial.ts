@@ -355,7 +355,7 @@ function drawTableHeader(doc: jsPDF, y: number): number {
 function drawProfissionalRow(doc: jsPDF, y: number, item: ItemFolha): number {
   const startX = MARGEM;
   let xCursor = startX;
-  const h = LINHA_ALTURA;
+  const h = calcularAlturaLinha(doc, item);
   const halfH = h / 2;
 
   doc.setDrawColor(...COR_BORDA);
@@ -364,25 +364,26 @@ function drawProfissionalRow(doc: jsPDF, y: number, item: ItemFolha): number {
 
   const t = item.totais;
   const situacao = item.profissional.situacao;
+  const isStatus = situacao && situacao !== "Ativo";
   const values: Record<string, string> = {
     proj: fmt(item.profissional.proj),
     hp: fmt(item.profissional.h_p),
     ch: fmt(item.profissional.c_h),
     jorn: fmt(item.profissional.jorn),
-    dias: situacao && situacao !== "Ativo" ? situacao : fmt(t.dias_trabalhados),
-    falta: situacao && situacao !== "Ativo" ? situacao : fmt(t.dias_falta),
-    att: situacao && situacao !== "Ativo" ? situacao : fmt(t.atestado),
-    mat: situacao && situacao !== "Ativo" ? situacao : fmt(t.maternidade),
-    he50: situacao && situacao !== "Ativo" ? situacao : fmt(t.he_50),
-    he100: situacao && situacao !== "Ativo" ? situacao : fmt(t.he_100),
-    terco: situacao && situacao !== "Ativo" ? situacao : (t.ferias_terco ? "X" : ""),
-    integ: situacao && situacao !== "Ativo" ? situacao : fmt(t.ferias_integral),
-    sal: situacao && situacao !== "Ativo" ? situacao : fmt(t.sal_sub_h),
-    adic: situacao && situacao !== "Ativo" ? situacao : fmt(t.adicional_noturno),
-    aulas: situacao && situacao !== "Ativo" ? situacao : fmt(t.aulas_suplementares),
-    plantao: situacao && situacao !== "Ativo" ? situacao : fmt(t.plantao),
-    sobre: situacao && situacao !== "Ativo" ? situacao : fmt(t.sobreaviso),
-    incent: situacao && situacao !== "Ativo" ? situacao : fmt(t.incentivo),
+    dias: isStatus ? situacao : fmt(t.dias_trabalhados),
+    falta: isStatus ? situacao : fmt(t.dias_falta),
+    att: isStatus ? situacao : fmt(t.atestado),
+    mat: isStatus ? situacao : fmt(t.maternidade),
+    he50: isStatus ? situacao : fmt(t.he_50),
+    he100: isStatus ? situacao : fmt(t.he_100),
+    terco: isStatus ? situacao : (t.ferias_terco ? "X" : ""),
+    integ: isStatus ? situacao : fmt(t.ferias_integral),
+    sal: isStatus ? situacao : fmt(t.sal_sub_h),
+    adic: isStatus ? situacao : fmt(t.adicional_noturno),
+    aulas: isStatus ? situacao : fmt(t.aulas_suplementares),
+    plantao: isStatus ? situacao : fmt(t.plantao),
+    sobre: isStatus ? situacao : fmt(t.sobreaviso),
+    incent: isStatus ? situacao : fmt(t.incentivo),
   };
 
   for (const c of COLS) {
@@ -405,7 +406,6 @@ function drawProfissionalRow(doc: jsPDF, y: number, item: ItemFolha): number {
       doc.setFont("helvetica", "bold");
       doc.setFontSize(7);
 
-
       const nome = item.profissional.nome ?? "";
       const nomeLinhas = doc.splitTextToSize(nome, c.w - 2) as string[];
       const nomeShow =
@@ -419,17 +419,30 @@ function drawProfissionalRow(doc: jsPDF, y: number, item: ItemFolha): number {
         cargoLinhas.length > 1 ? cargoLinhas[0].trimEnd() + "…" : (cargoLinhas[0] ?? "");
       doc.text(cargoShow, xCursor + c.w / 2, y + halfH + 4, { align: "center" });
     } else {
-      // valor numérico centralizado verticalmente na célula
+      // valor numérico ou ocorrência, centralizado vertical e horizontalmente
       doc.setFont("helvetica", "normal");
       doc.setFontSize(7.5);
 
       const val = values[c.key] ?? "";
       if (val) {
-        // Se for um texto longo (como status de situação), reduzimos a fonte e permitimos quebra básica se necessário
-        const isStatus = val.length > 5 && situacao && situacao !== "Ativo" && val === situacao;
-        if (isStatus) doc.setFontSize(6);
-        doc.text(val, xCursor + c.w / 2, y + h / 2 + 1, { align: "center", maxWidth: c.w - 1 });
-        if (isStatus) doc.setFontSize(7.5);
+        const isLongText = isStatus && val === situacao;
+        const fontSize = isLongText ? 6 : 7.5;
+        const lineHeight = ptToMm(fontSize) * 1.1;
+        const maxWidth = c.w - PADDING_CELULA * 2;
+
+        doc.setFontSize(fontSize);
+        const linhas = (doc.splitTextToSize(val, maxWidth) as string[]).slice(
+          0,
+          Math.max(1, Math.floor((h - PADDING_CELULA * 2) / lineHeight)),
+        );
+        const blocoAltura = linhas.length * lineHeight;
+        const firstBaseline = y + (h - blocoAltura) / 2 + lineHeight * 0.75;
+
+        for (let i = 0; i < linhas.length; i++) {
+          doc.text(linhas[i], xCursor + c.w / 2, firstBaseline + i * lineHeight, {
+            align: "center",
+          });
+        }
       }
     }
     xCursor += c.w;
