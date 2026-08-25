@@ -35,7 +35,8 @@ import { Plus, Lock, Unlock, Archive, Settings } from "lucide-react";
 import { usePermissions, useCurrentUser } from "@/hooks/use-permissions";
 import type { Database } from "@/integrations/supabase/types";
 
-export const Route = createFileRoute("/_authenticated/competencias")({ errorComponent: ErrorComponent,
+export const Route = createFileRoute("/_authenticated/competencias")({
+  errorComponent: ErrorComponent,
   component: CompetenciasPage,
 });
 
@@ -475,7 +476,11 @@ function CompetenciaForm({
           </div>
           <div>
             <Label>Secretaria</Label>
-            <Select value={secretariaId} onValueChange={setSecretariaId} disabled={!!editing && editing.status !== "aberta"}>
+            <Select
+              value={secretariaId}
+              onValueChange={setSecretariaId}
+              disabled={!!editing && editing.status !== "aberta"}
+            >
               <SelectTrigger>
                 <SelectValue placeholder="Selecione" />
               </SelectTrigger>
@@ -500,11 +505,7 @@ function CompetenciaForm({
           </div>
           <div>
             <Label>Data fim</Label>
-            <Input
-              type="date"
-              value={dataFim ?? ""}
-              onChange={(e) => setDataFim(e.target.value)}
-            />
+            <Input type="date" value={dataFim ?? ""} onChange={(e) => setDataFim(e.target.value)} />
           </div>
         </div>
         <div className="grid grid-cols-2 gap-4">

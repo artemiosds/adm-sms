@@ -23,7 +23,7 @@ export const criarCompetencia = createServerFn({ method: "POST" })
     await ensurePermission(context.supabase, context.userId, ACOES.COMPETENCIA_CRIAR, {
       _secretaria_id: data.secretaria_id,
     });
-    
+
     const { error, data: row } = await context.supabase
       .from("competencias")
       .insert({
@@ -41,7 +41,7 @@ export const criarCompetencia = createServerFn({ method: "POST" })
       })
       .select("id")
       .single();
-    
+
     if (error) throw new Error(error.message);
     const id = row.id as string;
 
@@ -63,10 +63,8 @@ export const criarCompetencia = createServerFn({ method: "POST" })
         created_by: context.userId,
       }));
 
-      const { error: vErr } = await context.supabase
-        .from("competencia_unidades")
-        .insert(vinculos);
-      
+      const { error: vErr } = await context.supabase.from("competencia_unidades").insert(vinculos);
+
       if (vErr) throw new Error(`Erro ao vincular unidades automaticamente: ${vErr.message}`);
     }
 
@@ -75,7 +73,7 @@ export const criarCompetencia = createServerFn({ method: "POST" })
       mes: data.mes,
       secretaria_id: data.secretaria_id,
     });
-    
+
     // Notificação (in-app + mural + e-mail) para usuários vinculados às unidades
     try {
       const { notificarNovaCompetencia } = await import("./notificar-competencia.server");
@@ -83,7 +81,6 @@ export const criarCompetencia = createServerFn({ method: "POST" })
     } catch (mailErr) {
       console.error("Erro ao enviar notificações de nova competência:", mailErr);
     }
-
 
     return { id };
   });
