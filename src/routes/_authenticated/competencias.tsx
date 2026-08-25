@@ -121,6 +121,11 @@ function CompetenciasPage() {
         await editarFn({
           data: {
             id: editing.id,
+            ano: payload.ano,
+            mes: payload.mes,
+            data_inicio: payload.data_inicio,
+            data_fim: payload.data_fim,
+            secretaria_id: payload.secretaria_id,
             descricao: payload.descricao ?? null,
             observacoes: payload.observacoes ?? null,
             prazo_envio: payload.prazo_envio ?? null,
