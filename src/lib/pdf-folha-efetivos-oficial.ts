@@ -513,7 +513,7 @@ export async function gerarFolhaEfetivosOficial(input: FolhaOficialInput): Promi
       let y = primeiraPagina(unidade, grupo);
 
       for (const item of grupo.itens) {
-        if (y + LINHA_ALTURA > limiteBaixo) {
+        if (y + calcularAlturaLinha(doc, item) > limiteBaixo) {
           doc.addPage();
           y = desenhaTopo();
           y = drawHierBar(doc, y, COR_NIVEL_1, "1 - Raiz");
