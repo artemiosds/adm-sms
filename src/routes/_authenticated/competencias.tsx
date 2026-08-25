@@ -366,7 +366,7 @@ function CompetenciaForm({
   onSubmit: (v: Partial<Competencia>) => void;
   saving: boolean;
 }) {
-  const now = new Date();
+  const now = useMemo(() => new Date(), []);
   const [ano, setAno] = useState(editing?.ano ?? now.getFullYear());
   const [mes, setMes] = useState(editing?.mes ?? now.getMonth() + 1);
   const [secretariaId, setSecretariaId] = useState(editing?.secretaria_id ?? "");
