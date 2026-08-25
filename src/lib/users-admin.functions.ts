@@ -292,6 +292,19 @@ export const alterarPerfilStatusUsuario = createServerFn({ method: "POST" })
       .update(patch)
       .eq("id", data.id);
     if (error) throw new Error(error.message);
+
+    // Invalida a sessão ativa ao bloquear/inativar; reabilita ao reativar.
+    if (data.status) {
+      const bloquear = data.status === "inativo" || data.status === "bloqueado";
+      try {
+        await supabaseAdmin.auth.admin.updateUserById(data.id, {
+          ban_duration: bloquear ? "876000h" : "none",
+        } as never);
+      } catch {
+        /* bloqueio já é garantido pelas políticas do banco */
+      }
+    }
+
     if (data.status) {
       if (data.status === "inativo" || data.status === "bloqueado") {
         await emitEvento(context.supabase, EVENTOS.USUARIO_BLOQUEADO, "usuario", data.id, {
