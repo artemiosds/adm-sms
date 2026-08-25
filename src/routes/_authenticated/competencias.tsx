@@ -42,6 +42,18 @@ export const Route = createFileRoute("/_authenticated/competencias")({
 
 type StatusComp = Database["public"]["Enums"]["status_competencia"];
 
+/**
+ * Formata uma data vinda do banco (YYYY-MM-DD ou ISO) em dd/mm/aaaa sem
+ * conversão de fuso. `new Date("2026-09-02")` é lido como UTC e, no fuso
+ * local (UTC-3), voltava um dia (01/09/2026).
+ */
+function fmtData(valor?: string | null) {
+  if (!valor) return "";
+  const [ano, mes, dia] = valor.split("T")[0].split("-");
+  if (!ano || !mes || !dia) return valor;
+  return `${dia}/${mes}/${ano}`;
+}
+
 type Competencia = {
   id: string;
   ano: number;
