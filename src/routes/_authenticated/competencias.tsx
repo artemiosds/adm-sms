@@ -42,6 +42,18 @@ export const Route = createFileRoute("/_authenticated/competencias")({
 
 type StatusComp = Database["public"]["Enums"]["status_competencia"];
 
+/**
+ * Formata uma data vinda do banco (YYYY-MM-DD ou ISO) em dd/mm/aaaa sem
+ * conversão de fuso. `new Date("2026-09-02")` é lido como UTC e, no fuso
+ * local (UTC-3), voltava um dia (01/09/2026).
+ */
+function fmtData(valor?: string | null) {
+  if (!valor) return "";
+  const [ano, mes, dia] = valor.split("T")[0].split("-");
+  if (!ano || !mes || !dia) return valor;
+  return `${dia}/${mes}/${ano}`;
+}
+
 type Competencia = {
   id: string;
   ano: number;
@@ -244,16 +256,11 @@ function CompetenciasPage() {
                     {MESES[c.mes - 1]}/{c.ano}
                   </td>
                   <td className="p-3 text-muted-foreground">
-                    {new Date(c.data_inicio).toLocaleDateString("pt-BR")} —{" "}
-                    {new Date(c.data_fim).toLocaleDateString("pt-BR")}
+                    {fmtData(c.data_inicio)} — {fmtData(c.data_fim)}
                   </td>
                   <td className="p-3 text-xs text-muted-foreground">
-                    {c.prazo_envio && (
-                      <div>Envio: {new Date(c.prazo_envio).toLocaleDateString("pt-BR")}</div>
-                    )}
-                    {c.prazo_analise && (
-                      <div>Análise: {new Date(c.prazo_analise).toLocaleDateString("pt-BR")}</div>
-                    )}
+                    {c.prazo_envio && <div>Envio: {fmtData(c.prazo_envio)}</div>}
+                    {c.prazo_analise && <div>Análise: {fmtData(c.prazo_analise)}</div>}
                   </td>
                   <td className="p-3">
                     <StatusBadge domain="competencia" value={c.status} />
