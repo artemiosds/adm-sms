@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { useHydrated } from "@/hooks/use-hydrated";
 import { Eye, EyeOff } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
 import { logger } from "@/lib/logger";
 import { auditClient, AUDIT_ACOES } from "@/lib/audit-client";
 import { useServerFn } from "@tanstack/react-start";
