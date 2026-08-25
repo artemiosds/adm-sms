@@ -134,6 +134,61 @@ function ptToMm(pt: number): number {
   return pt * 0.352778;
 }
 
+function quebrarTextoPorLargura(
+  doc: jsPDF,
+  texto: string,
+  maxWidthMm: number,
+  fontSize: number,
+): string[] {
+  doc.setFontSize(fontSize);
+  const palavras = texto.split(/\s+/).filter(Boolean);
+  const linhas: string[] = [];
+  let linhaAtual = "";
+
+  for (const palavra of palavras) {
+    const candidata = linhaAtual ? `${linhaAtual} ${palavra}` : palavra;
+    const largura = doc.getTextDimensions(candidata).w;
+    if (largura <= maxWidthMm) {
+      linhaAtual = candidata;
+    } else if (linhaAtual === "") {
+      // Palavra sozinha não cabe: quebra por caracteres
+      let pedaco = "";
+      for (const char of palavra) {
+        const teste = pedaco ? `${pedaco}${char}` : char;
+        if (doc.getTextDimensions(teste).w <= maxWidthMm) {
+          pedaco = teste;
+        } else {
+          if (pedaco) linhas.push(pedaco);
+          pedaco = char;
+        }
+      }
+      if (pedaco) linhas.push(pedaco);
+    } else {
+      linhas.push(linhaAtual);
+      linhaAtual = palavra;
+      // Verifica se a palavra sozinha cabe; se não, quebra por caracteres
+      if (doc.getTextDimensions(linhaAtual).w > maxWidthMm) {
+        const pedacos: string[] = [];
+        let pedaco = "";
+        for (const char of linhaAtual) {
+          const teste = pedaco ? `${pedaco}${char}` : char;
+          if (doc.getTextDimensions(teste).w <= maxWidthMm) {
+            pedaco = teste;
+          } else {
+            if (pedaco) pedacos.push(pedaco);
+            pedaco = char;
+          }
+        }
+        if (pedaco) pedacos.push(pedaco);
+        linhas.push(...pedacos.slice(0, -1));
+        linhaAtual = pedacos[pedacos.length - 1] ?? "";
+      }
+    }
+  }
+  if (linhaAtual) linhas.push(linhaAtual);
+  return linhas;
+}
+
 function calcularAlturaLinha(doc: jsPDF, item: ItemFolha): number {
   const t = item.totais;
   const situacao = item.profissional.situacao;
