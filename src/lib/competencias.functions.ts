@@ -90,10 +90,15 @@ export const criarCompetencia = createServerFn({ method: "POST" })
 
 const EditarSchema = z.object({
   id: z.string().uuid(),
+  ano: z.number().int().min(2000).max(2100).optional(),
+  mes: z.number().int().min(1).max(12).optional(),
+  data_inicio: z.string().min(10).optional(),
+  data_fim: z.string().min(10).optional(),
   descricao: z.string().nullable().optional(),
   observacoes: z.string().nullable().optional(),
   prazo_envio: z.string().nullable().optional(),
   prazo_analise: z.string().nullable().optional(),
+  secretaria_id: z.string().uuid().optional(),
 });
 
 export const editarCompetencia = createServerFn({ method: "POST" })
@@ -102,6 +107,11 @@ export const editarCompetencia = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     await ensurePermission(context.supabase, context.userId, ACOES.COMPETENCIA_EDITAR);
     const patch: Record<string, unknown> = { updated_by: context.userId };
+    if (data.ano !== undefined) patch.ano = data.ano;
+    if (data.mes !== undefined) patch.mes = data.mes;
+    if (data.data_inicio !== undefined) patch.data_inicio = data.data_inicio;
+    if (data.data_fim !== undefined) patch.data_fim = data.data_fim;
+    if (data.secretaria_id !== undefined) patch.secretaria_id = data.secretaria_id;
     if (data.descricao !== undefined) patch.descricao = data.descricao;
     if (data.observacoes !== undefined) patch.observacoes = data.observacoes;
     if (data.prazo_envio !== undefined) patch.prazo_envio = data.prazo_envio;
