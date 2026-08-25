@@ -481,7 +481,7 @@ function drawProfissionalRow(doc: jsPDF, y: number, item: ItemFolha): number {
       const val = values[c.key] ?? "";
       if (val) {
         const isLongText = isStatus && val === situacao;
-        const fontSize = isLongText ? 6 : 7.5;
+        const fontSize = isLongText ? 5.5 : 7.5;
         const lineHeight = ptToMm(fontSize) * 1.1;
         const maxWidth = c.w - PADDING_CELULA * 2;
 
