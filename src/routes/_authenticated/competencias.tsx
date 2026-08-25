@@ -2,7 +2,7 @@ import { ErrorComponent } from "@/components/shared/ErrorComponent";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import {
   criarCompetencia,
@@ -35,7 +35,8 @@ import { Plus, Lock, Unlock, Archive, Settings } from "lucide-react";
 import { usePermissions, useCurrentUser } from "@/hooks/use-permissions";
 import type { Database } from "@/integrations/supabase/types";
 
-export const Route = createFileRoute("/_authenticated/competencias")({ errorComponent: ErrorComponent,
+export const Route = createFileRoute("/_authenticated/competencias")({
+  errorComponent: ErrorComponent,
   component: CompetenciasPage,
 });
 
@@ -121,6 +122,11 @@ function CompetenciasPage() {
         await editarFn({
           data: {
             id: editing.id,
+            ano: payload.ano,
+            mes: payload.mes,
+            data_inicio: payload.data_inicio,
+            data_fim: payload.data_fim,
+            secretaria_id: payload.secretaria_id,
             descricao: payload.descricao ?? null,
             observacoes: payload.observacoes ?? null,
             prazo_envio: payload.prazo_envio ?? null,
@@ -361,22 +367,63 @@ function CompetenciaForm({
   onSubmit: (v: Partial<Competencia>) => void;
   saving: boolean;
 }) {
-  const now = new Date();
+  const now = useMemo(() => new Date(), []);
   const [ano, setAno] = useState(editing?.ano ?? now.getFullYear());
   const [mes, setMes] = useState(editing?.mes ?? now.getMonth() + 1);
   const [secretariaId, setSecretariaId] = useState(editing?.secretaria_id ?? "");
+  const [dataInicio, setDataInicio] = useState(editing?.data_inicio ?? "");
+  const [dataFim, setDataFim] = useState(editing?.data_fim ?? "");
   const [prazoEnvio, setPrazoEnvio] = useState(editing?.prazo_envio ?? "");
   const [prazoAnalise, setPrazoAnalise] = useState(editing?.prazo_analise ?? "");
   const [descricao, setDescricao] = useState(editing?.descricao ?? "");
   const [observacoes, setObservacoes] = useState(editing?.observacoes ?? "");
 
-  const dataInicio = `${ano}-${String(mes).padStart(2, "0")}-01`;
-  const dataFim = `${ano}-${String(mes).padStart(2, "0")}-${String(lastDay(ano, mes)).padStart(2, "0")}`;
+  // Popula o formulário sempre que a competência em edição mudar ou o modal abrir/fechar.
+  useEffect(() => {
+    if (editing) {
+      setAno(editing.ano);
+      setMes(editing.mes);
+      setSecretariaId(editing.secretaria_id ?? "");
+      setDataInicio(editing.data_inicio?.split("T")[0] ?? "");
+      setDataFim(editing.data_fim?.split("T")[0] ?? "");
+      setPrazoEnvio(editing.prazo_envio?.split("T")[0] ?? "");
+      setPrazoAnalise(editing.prazo_analise?.split("T")[0] ?? "");
+      setDescricao(editing.descricao ?? "");
+      setObservacoes(editing.observacoes ?? "");
+    } else {
+      const fallbackMes = now.getMonth() + 1;
+      const fallbackAno = now.getFullYear();
+      setAno(fallbackAno);
+      setMes(fallbackMes);
+      setSecretariaId("");
+      setDataInicio(`${fallbackAno}-${String(fallbackMes).padStart(2, "0")}-01`);
+      setDataFim(
+        `${fallbackAno}-${String(fallbackMes).padStart(2, "0")}-${String(lastDay(fallbackAno, fallbackMes)).padStart(2, "0")}`,
+      );
+      setPrazoEnvio("");
+      setPrazoAnalise("");
+      setDescricao("");
+      setObservacoes("");
+    }
+  }, [editing, now]);
+
+  // Recalcula o período automaticamente ao alterar mês/ano no modo criação.
+  useEffect(() => {
+    if (editing) return;
+    setDataInicio(`${ano}-${String(mes).padStart(2, "0")}-01`);
+    setDataFim(
+      `${ano}-${String(mes).padStart(2, "0")}-${String(lastDay(ano, mes)).padStart(2, "0")}`,
+    );
+  }, [ano, mes, editing]);
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!secretariaId) {
       toast.error("Selecione a secretaria");
+      return;
+    }
+    if (!dataInicio || !dataFim) {
+      toast.error("Informe o período da competência");
       return;
     }
     onSubmit({
@@ -387,8 +434,8 @@ function CompetenciaForm({
       prazo_envio: prazoEnvio || null,
       prazo_analise: prazoAnalise || null,
       secretaria_id: secretariaId,
-      descricao,
-      observacoes,
+      descricao: descricao || null,
+      observacoes: observacoes || null,
     });
   };
 
@@ -429,7 +476,11 @@ function CompetenciaForm({
           </div>
           <div>
             <Label>Secretaria</Label>
-            <Select value={secretariaId} onValueChange={setSecretariaId} disabled={!!editing && editing.status !== "aberta"}>
+            <Select
+              value={secretariaId}
+              onValueChange={setSecretariaId}
+              disabled={!!editing && editing.status !== "aberta"}
+            >
               <SelectTrigger>
                 <SelectValue placeholder="Selecione" />
               </SelectTrigger>
@@ -441,6 +492,20 @@ function CompetenciaForm({
                 ))}
               </SelectContent>
             </Select>
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <Label>Data início</Label>
+            <Input
+              type="date"
+              value={dataInicio ?? ""}
+              onChange={(e) => setDataInicio(e.target.value)}
+            />
+          </div>
+          <div>
+            <Label>Data fim</Label>
+            <Input type="date" value={dataFim ?? ""} onChange={(e) => setDataFim(e.target.value)} />
           </div>
         </div>
         <div className="grid grid-cols-2 gap-4">
