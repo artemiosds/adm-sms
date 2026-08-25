@@ -226,7 +226,7 @@ function calcularAlturaLinha(doc: jsPDF, item: ItemFolha): number {
     const lineHeight = ptToMm(fontSize) * 1.1;
     const maxWidth = c.w - PADDING_CELULA * 2;
     doc.setFontSize(fontSize);
-    const linhas = (doc.splitTextToSize(val, maxWidth) as string[]).slice(
+    const linhas = quebrarTextoPorLargura(doc, val, maxWidth, fontSize).slice(
       0,
       Math.max(1, Math.floor((LINHA_ALTURA_MAX - PADDING_CELULA * 2) / lineHeight)),
     );
