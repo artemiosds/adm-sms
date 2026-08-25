@@ -114,7 +114,9 @@ const COLS = [
 ];
 
 const MARGEM = 10;
-const LINHA_ALTURA = 12; // altura da linha de profissional (2 sub-linhas)
+const LINHA_ALTURA = 12; // altura mínima da linha de profissional (2 sub-linhas)
+const LINHA_ALTURA_MAX = 28; // altura máxima razoável para uma linha
+const PADDING_CELULA = 1; // mm de cada lado
 
 /* -------------------- Helpers de desenho -------------------- */
 
