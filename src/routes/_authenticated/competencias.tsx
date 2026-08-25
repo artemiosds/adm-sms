@@ -256,16 +256,11 @@ function CompetenciasPage() {
                     {MESES[c.mes - 1]}/{c.ano}
                   </td>
                   <td className="p-3 text-muted-foreground">
-                    {new Date(c.data_inicio).toLocaleDateString("pt-BR")} —{" "}
-                    {new Date(c.data_fim).toLocaleDateString("pt-BR")}
+                    {fmtData(c.data_inicio)} — {fmtData(c.data_fim)}
                   </td>
                   <td className="p-3 text-xs text-muted-foreground">
-                    {c.prazo_envio && (
-                      <div>Envio: {new Date(c.prazo_envio).toLocaleDateString("pt-BR")}</div>
-                    )}
-                    {c.prazo_analise && (
-                      <div>Análise: {new Date(c.prazo_analise).toLocaleDateString("pt-BR")}</div>
-                    )}
+                    {c.prazo_envio && <div>Envio: {fmtData(c.prazo_envio)}</div>}
+                    {c.prazo_analise && <div>Análise: {fmtData(c.prazo_analise)}</div>}
                   </td>
                   <td className="p-3">
                     <StatusBadge domain="competencia" value={c.status} />
