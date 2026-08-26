@@ -150,7 +150,7 @@ export async function notificarNovaCompetencia(competenciaId: string, criadoPor?
     .select("id")
     .eq("titulo", titulo)
     .eq("ativo", true)
-    .order("created_at", { ascending: true })
+    .order("criado_em", { ascending: true })
     .limit(1)
     .maybeSingle();
 
