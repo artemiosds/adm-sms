@@ -145,8 +145,9 @@ function CompetenciasPage() {
             prazo_analise: payload.prazo_analise ?? null,
           },
         });
+        return null;
       } else {
-        await criarFn({
+        return await criarFn({
           data: {
             ano: payload.ano!,
             mes: payload.mes!,
