@@ -18,7 +18,16 @@ type Resultado = {
  * abertura de uma competência: notificação in-app (sino), aviso no mural e e-mail.
  */
 export async function notificarNovaCompetencia(competenciaId: string, criadoPor?: string): Promise<Resultado> {
-  const vazio: Resultado = { usuarios: 0, notificacoes: 0, emails: 0, aviso_id: null };
+  const vazio: Resultado = {
+    usuarios: 0,
+    notificacoes: 0,
+    notificacoes_ja_existentes: 0,
+    emails: 0,
+    emails_ja_enviados: 0,
+    emails_falhos: 0,
+    aviso_id: null,
+    aviso_reutilizado: false,
+  };
 
   const { data: comp, error: cErr } = await supabaseAdmin
     .from("competencias")
