@@ -102,17 +102,19 @@ export const criarAviso = createServerFn({ method: "POST" })
 
       if (data.notificar_email && avisoInserido) {
         try {
-          await supabase.functions.invoke('notificar-aviso-mural', {
-            body: { aviso_id: avisoInserido.id }
-          });
-          await supabaseAdmin
-            .from('avisos_mural')
-            .update({ email_enviado_em: new Date().toISOString() })
-            .eq('id', avisoInserido.id);
+          const { enviarEmailsAviso } = await import("@/lib/mural-avisos.server");
+          const res = await enviarEmailsAviso(avisoInserido.id);
+          if (res.enviados > 0) {
+            await supabaseAdmin
+              .from('avisos_mural')
+              .update({ email_enviado_em: new Date().toISOString() })
+              .eq('id', avisoInserido.id);
+          }
         } catch (invokeError) {
           console.error("Erro ao disparar notificação por e-mail:", invokeError);
         }
       }
+
 
       return { success: true };
     } catch (err) {
