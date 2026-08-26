@@ -141,11 +141,15 @@ export const reenviarEmailAviso = createServerFn({ method: "POST" })
       throw new Error("Não autorizado");
     }
 
-    const { error: invokeError } = await supabase.functions.invoke('notificar-aviso-mural', {
-      body: { aviso_id: data.avisoId }
-    });
+    const { enviarEmailsAviso } = await import("@/lib/mural-avisos.server");
+    const res = await enviarEmailsAviso(data.avisoId);
 
-    if (invokeError) throw invokeError;
+    if (res.enviados === 0) {
+      throw new Error(
+        res.motivo ??
+          "Nenhum e-mail pôde ser enviado. Verifique as configurações de SMTP em Configurações do Sistema.",
+      );
+    }
 
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     await supabaseAdmin
@@ -153,7 +157,14 @@ export const reenviarEmailAviso = createServerFn({ method: "POST" })
       .update({ email_enviado_em: new Date().toISOString() })
       .eq('id', data.avisoId);
 
-    return { success: true };
+    return {
+      success: true,
+      enviados: res.enviados,
+      falhas: res.falhas,
+      destinatarios: res.destinatarios,
+      motivo: res.motivo,
+    };
+
   });
 
 export const listarAvisosAtivos = createServerFn({ method: "GET" })
