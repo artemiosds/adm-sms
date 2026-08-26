@@ -5,8 +5,12 @@ import { logger } from "./logger";
 type Resultado = {
   usuarios: number;
   notificacoes: number;
+  notificacoes_ja_existentes: number;
   emails: number;
+  emails_ja_enviados: number;
+  emails_falhos: number;
   aviso_id: string | null;
+  aviso_reutilizado: boolean;
 };
 
 /**
