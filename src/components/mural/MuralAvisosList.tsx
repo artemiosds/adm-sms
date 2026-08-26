@@ -73,12 +73,20 @@ export function MuralAvisosList() {
 
   const mutationReenviar = useMutation({
     mutationFn: (id: string) => resendEmail({ data: { avisoId: id } }),
-    onSuccess: () => {
+    onSuccess: (res: any) => {
       queryClient.invalidateQueries({ queryKey: ["mural-avisos"] });
-      toast.success("E-mail reenviado com sucesso!");
+      const enviados = res?.enviados ?? 0;
+      const falhas = res?.falhas ?? 0;
+      if (falhas > 0) {
+        toast.warning(`${enviados} e-mail(s) enviado(s), ${falhas} falha(s). ${res?.motivo ?? ""}`);
+      } else {
+        toast.success(`E-mail enviado para ${enviados} destinatário(s).`);
+      }
     },
-    onError: (err: any) => toast.error(`Erro ao reenviar e-mail: ${err.message}`)
+    onError: (err: any) =>
+      toast.error(`Erro ao reenviar e-mail: ${err?.message || "falha desconhecida"}`)
   });
+
 
   const filteredAvisos = useMemo(() => {
     if (!avisos) return [];
