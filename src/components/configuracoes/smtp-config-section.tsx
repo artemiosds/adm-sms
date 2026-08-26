@@ -49,6 +49,7 @@ export function SmtpConfigSection() {
   const testarFn = useServerFn(testarConexaoSMTP);
 
   const [form, setForm] = useState<FormSmtp>(VAZIO);
+  const [inicializado, setInicializado] = useState(false);
   const [mostrarSenha, setMostrarSenha] = useState(false);
 
   const { data, isLoading } = useQuery({
@@ -57,18 +58,25 @@ export function SmtpConfigSection() {
   });
 
   useEffect(() => {
-    if (!data) return;
+    if (!data || inicializado) return;
+
+    const fromEmail = data.smtp_from_email?.trim() || data.smtp_user?.trim() || "";
+    const fromName = data.smtp_from_name?.trim() || VAZIO.smtp_from_name;
+    const secure = !!data.smtp_secure;
+
     setForm({
-      smtp_host: data.smtp_host ?? "",
-      smtp_port: data.smtp_port ?? 587,
-      smtp_user: data.smtp_user ?? "",
+      smtp_host: data.smtp_host?.trim() || "",
+      smtp_port: data.smtp_port ?? (secure ? 465 : 587),
+      smtp_user: data.smtp_user?.trim() || "",
       smtp_password: data.smtp_password ?? "",
-      smtp_from_email: data.smtp_from_email ?? "",
-      smtp_from_name: data.smtp_from_name ?? VAZIO.smtp_from_name,
-      smtp_secure: !!data.smtp_secure,
-      smtp_ativo: !!data.smtp_ativo,
+      smtp_from_email: fromEmail,
+      smtp_from_name: fromName,
+      smtp_secure: secure,
+      smtp_ativo: data.smtp_ativo !== false,
     });
-  }, [data]);
+    setInicializado(true);
+  }, [data, inicializado]);
+
 
   const salvar = useMutation({
     mutationFn: () => salvarFn({ data: form }),
