@@ -108,51 +108,101 @@ export async function notificarNovaCompetencia(competenciaId: string, criadoPor?
     `Prazo de envio das folhas: ${fmt(comp.prazo_envio as string | null)}. ` +
     `Prazo de análise: ${fmt(comp.prazo_analise as string | null)}.`;
 
-  // 3. Notificações in-app
-  const { error: nErr, count } = await supabaseAdmin.from("notificacoes").insert(
-    destinatarios.map((u) => ({
-      usuario_id: u.id,
-      tipo: "sistema" as const,
-      prioridade: "alta" as const,
-      canal: "interno" as const,
-      titulo,
-      mensagem,
-      link: "/frequencias",
-      entidade_tipo: "competencia",
-      entidade_id: competenciaId,
-      created_by: criadoPor ?? null,
-    })) as never,
-    { count: "exact" },
-  );
-  if (nErr) logger.error("competencia.notificar.inapp_erro", { error: nErr.message });
+  // 3. Notificações in-app (idempotente: só para quem ainda não recebeu)
+  const { data: jaNotificados } = await supabaseAdmin
+    .from("notificacoes")
+    .select("usuario_id")
+    .eq("entidade_tipo", "competencia")
+    .eq("entidade_id", competenciaId);
 
-  // 4. Aviso no mural (para as unidades da secretaria)
+  const jaNotificadosSet = new Set((jaNotificados ?? []).map((n) => n.usuario_id as string));
+  const pendentesNotificacao = destinatarios.filter((u) => !jaNotificadosSet.has(u.id));
+  const notificacoesJaExistentes = destinatarios.length - pendentesNotificacao.length;
+  let count = 0;
+
+  if (pendentesNotificacao.length > 0) {
+    const { error: nErr, count: inseridas } = await supabaseAdmin.from("notificacoes").insert(
+      pendentesNotificacao.map((u) => ({
+        usuario_id: u.id,
+        tipo: "sistema" as const,
+        prioridade: "alta" as const,
+        canal: "interno" as const,
+        titulo,
+        mensagem,
+        link: "/frequencias",
+        entidade_tipo: "competencia",
+        entidade_id: competenciaId,
+        created_by: criadoPor ?? null,
+      })) as never,
+      { count: "exact" },
+    );
+    if (nErr) logger.error("competencia.notificar.inapp_erro", { error: nErr.message });
+    else count = inseridas ?? pendentesNotificacao.length;
+  }
+
+  // 4. Aviso no mural (reutiliza o aviso já existente desta competência)
   let avisoId: string | null = null;
-  const { data: aviso, error: aErr } = await supabaseAdmin
-    .from("avisos_mural")
-    .insert({
-      titulo,
-      mensagem,
-      tipo: "informativo",
-      prioridade: "alta",
-      fixado: true,
-      destinatarios: unidadeIds.length > 0 ? { tipo: "unidades", valores: unidadeIds } : { tipo: "todos" },
-      data_inicio: new Date().toISOString().split("T")[0],
-      data_fim: (comp.prazo_envio as string | null) ?? null,
-      ativo: true,
-      criado_por: criadoPor ?? null,
-    } as never)
-    .select("id")
-    .maybeSingle();
-  if (aErr) logger.error("competencia.notificar.mural_erro", { error: aErr.message });
-  else avisoId = (aviso?.id as string) ?? null;
+  let avisoReutilizado = false;
+  const dataFimAviso = (comp.prazo_envio as string | null) ?? null;
 
-  // 5. E-mails
+  const { data: avisoExistente } = await supabaseAdmin
+    .from("avisos_mural")
+    .select("id")
+    .eq("titulo", titulo)
+    .eq("ativo", true)
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  if (avisoExistente?.id) {
+    avisoId = avisoExistente.id as string;
+    avisoReutilizado = true;
+    const { error: upErr } = await supabaseAdmin
+      .from("avisos_mural")
+      .update({ mensagem, data_fim: dataFimAviso } as never)
+      .eq("id", avisoId);
+    if (upErr) logger.error("competencia.notificar.mural_update_erro", { error: upErr.message });
+  } else {
+    const { data: aviso, error: aErr } = await supabaseAdmin
+      .from("avisos_mural")
+      .insert({
+        titulo,
+        mensagem,
+        tipo: "informativo",
+        prioridade: "alta",
+        fixado: true,
+        destinatarios: unidadeIds.length > 0 ? { tipo: "unidades", valores: unidadeIds } : { tipo: "todos" },
+        data_inicio: new Date().toISOString().split("T")[0],
+        data_fim: dataFimAviso,
+        ativo: true,
+        criado_por: criadoPor ?? null,
+      } as never)
+      .select("id")
+      .maybeSingle();
+    if (aErr) logger.error("competencia.notificar.mural_erro", { error: aErr.message });
+    else avisoId = (aviso?.id as string) ?? null;
+  }
+
+  // 5. E-mails (pula quem já recebeu este assunto com sucesso)
   const baseUrl = process.env.VITE_APP_URL || process.env.SITE_URL || "https://hsmgestao.lovable.app";
+  const assunto = `[Aviso] Nova Competência Aberta: ${competenciaStr}`;
   const emails = [...new Set(destinatarios.map((u) => u.email).filter((e): e is string => !!e && e.includes("@")))];
   let enviados = 0;
+  let jaEnviados = 0;
+  let falhos = 0;
+
+  const { data: logsPrevios } = await supabaseAdmin
+    .from("logs_notificacoes")
+    .select("destinatario")
+    .eq("assunto", assunto)
+    .eq("status", "enviado");
+  const jaEnviadosSet = new Set((logsPrevios ?? []).map((l) => (l.destinatario as string)?.toLowerCase()));
 
   for (const email of emails) {
+    if (jaEnviadosSet.has(email.toLowerCase())) {
+      jaEnviados++;
+      continue;
+    }
     const html = generateEmailTemplate({
       title: "Nova Competência Aberta",
       message: mensagem,
