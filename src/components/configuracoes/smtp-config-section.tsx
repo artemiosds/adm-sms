@@ -217,15 +217,20 @@ export function SmtpConfigSection() {
                 type="button"
                 variant="outline"
                 onClick={() => testar.mutate()}
-                disabled={testar.isPending || !form.smtp_host || !form.smtp_user}
+                disabled={!inicializado || testar.isPending || !form.smtp_host.trim() || !form.smtp_user.trim()}
               >
                 <SendHorizonal className="mr-2 h-4 w-4" />
                 {testar.isPending ? "Testando..." : "Testar conexão / enviar e-mail teste"}
               </Button>
-              <Button type="button" onClick={() => salvar.mutate()} disabled={salvar.isPending}>
+              <Button
+                type="button"
+                onClick={() => salvar.mutate()}
+                disabled={!inicializado || salvar.isPending || !form.smtp_host.trim() || !form.smtp_user.trim()}
+              >
                 <Save className="mr-2 h-4 w-4" />
                 {salvar.isPending ? "Salvando..." : "Salvar alterações"}
               </Button>
+
             </div>
           </div>
         </>
