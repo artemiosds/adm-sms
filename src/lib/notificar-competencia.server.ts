@@ -215,14 +215,23 @@ export async function notificarNovaCompetencia(competenciaId: string, criadoPor?
         { label: "Prazo de Análise", value: fmt(comp.prazo_analise as string | null) },
       ],
     });
-    const r = await sendEmail({ to: email, subject: `[Aviso] Nova Competência Aberta: ${competenciaStr}`, html });
+    const r = await sendEmail({ to: email, subject: assunto, html });
     if (r.success) enviados++;
+    else falhos++;
+  }
+
+  if (falhos > 0) {
+    logger.error("competencia.notificar.emails_falhos", { competenciaId, falhos, total: emails.length });
   }
 
   return {
     usuarios: destinatarios.length,
-    notificacoes: count ?? destinatarios.length,
+    notificacoes: count,
+    notificacoes_ja_existentes: notificacoesJaExistentes,
     emails: enviados,
+    emails_ja_enviados: jaEnviados,
+    emails_falhos: falhos,
     aviso_id: avisoId,
+    aviso_reutilizado: avisoReutilizado,
   };
 }
