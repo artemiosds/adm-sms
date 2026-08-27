@@ -996,6 +996,8 @@ function StepPrevia({
         </div>
       </div>
       {indice && <IndiceCard indice={indice} />}
+      {consolidados.length > 0 && <ConsolidadosPreview tabelas={consolidados} />}
+
       {built.map(({ cfg, block, rows, rawRows, grupos }) => (
         <div key={cfg.blockId} className="rounded-md border">
           <div className="flex items-center justify-between border-b bg-muted/30 px-3 py-2">
