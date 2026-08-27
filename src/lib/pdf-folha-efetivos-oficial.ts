@@ -133,6 +133,19 @@ function fmt(v: number | string | null | undefined): string {
   return formatarNumeroPtBr(x);
 }
 
+/**
+ * Dias trabalhados da competência. Quando o servidor não tem ocorrência e o
+ * campo não foi preenchido, usa os dias projetados ("Proj") como referência.
+ */
+function diasTrabalhados(item: ItemFolha): string {
+  const bruto = item.totais.dias_trabalhados;
+  const n = parseNumeroPtBr(bruto);
+  if (n > 0) return formatarNumeroPtBr(n);
+  if (typeof bruto === "string" && bruto.trim() && !/^[\d.,\s]+$/.test(bruto)) return bruto;
+  const proj = parseNumeroPtBr(item.profissional.proj);
+  return proj > 0 ? formatarNumeroPtBr(proj) : "";
+}
+
 
 function ptToMm(pt: number): number {
   return pt * 0.352778;
