@@ -1705,6 +1705,8 @@ function StepExportar({
         grupos: grupos ?? undefined,
         groupByLabels: cfg.groupBy?.map((id) => block.fields.find((f) => f.id === id)?.label ?? id),
       }));
+      const blocosExp: BlocoExport[] = [...consolidadosExp, ...analiticos];
+
       const stamp = new Date().toISOString().slice(0, 10);
       const filename = `relatorio-${tipo}-${stamp}`;
       const tituloRel = `Relatório Gerencial — ${labelTipo(tipo)}`;
