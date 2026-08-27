@@ -1679,7 +1679,22 @@ function StepExportar({
     }
     setGerando(true);
     try {
-      const blocosExp: BlocoExport[] = built.map(({ cfg, block, rows, grupos }) => ({
+      const salarial = built.find((b) => b.block.id === BLOCO_SALARIAL_ID);
+      let consolidadosExp: BlocoExport[] = [];
+      if (salarial) {
+        try {
+          consolidadosExp = construirConsolidadosSalariais(salarial.rawRows).map((t) => ({
+            titulo: t.titulo,
+            descricao: t.descricao,
+            colunas: t.colunas,
+            linhas: t.linhas,
+          }));
+        } catch (e) {
+          console.error("Erro ao construir consolidados salariais para exportação:", e);
+        }
+      }
+      const analiticos: BlocoExport[] = built.map(({ cfg, block, rows, grupos }) => ({
+
         titulo: block.label,
         descricao: block.descricao,
         colunas: cfg.fields.map((id) => {
