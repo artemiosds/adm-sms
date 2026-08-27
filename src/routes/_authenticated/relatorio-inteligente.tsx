@@ -947,6 +947,17 @@ function StepPrevia({
     }),
     [built],
   );
+  const consolidados = useMemo(() => {
+    const salarial = built.find((b) => b.block.id === BLOCO_SALARIAL_ID);
+    if (!salarial) return [];
+    try {
+      return construirConsolidadosSalariais(salarial.rawRows);
+    } catch (e) {
+      console.error("Erro ao construir consolidados salariais:", e);
+      return [];
+    }
+  }, [built]);
+  const [resumido, setResumido] = useState(false);
 
   if (loading)
     return (
@@ -961,7 +972,7 @@ function StepPrevia({
   if (!built.length)
     return <EmptyState title="Nada para exibir" description="Selecione blocos na Etapa 1." />;
 
-  const [resumido, setResumido] = useState(false);
+
 
   return (
     <div className="space-y-4">
