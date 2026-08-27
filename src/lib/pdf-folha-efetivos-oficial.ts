@@ -18,6 +18,8 @@ import { loadMunicipioInfo, type MunicipioInfo } from "@/lib/pdf-institucional";
 import { resolverAssinaturasDocumento } from "@/lib/pdf-assinaturas";
 import { finalizarPdf } from "@/lib/pdf-pipeline";
 import { LOGO_BRASAO } from "@/lib/pdf-logos-base64";
+import { parseNumeroPtBr, formatarNumeroPtBr } from "@/lib/numero-ptbr";
+
 
 export type ProfissionalFolha = {
   id: string;
