@@ -200,7 +200,7 @@ export function construirConsolidadosSalariais(rows: Row[]): ConsolidadoTabela[]
       cargo,
       qtd: a.qtd,
       salario_medio: r2(a.qtd ? a.bruto / a.qtd : 0),
-      massa_salarial_bruta: r2(a.bruto),
+      valor_massa_bruta: r2(a.bruto),
       pct_folha: totalBruto
         ? `${((a.bruto / totalBruto) * 100).toLocaleString("pt-BR", {
             minimumFractionDigits: 2,
@@ -212,7 +212,7 @@ export function construirConsolidadosSalariais(rows: Row[]): ConsolidadoTabela[]
     cargo: "TOTAL GERAL",
     qtd: geral.qtd,
     salario_medio: r2(geral.qtd ? geral.bruto / geral.qtd : 0),
-    massa_salarial_bruta: r2(geral.bruto),
+    valor_massa_bruta: r2(geral.bruto),
     pct_folha: totalBruto ? "100,00%" : "0,00%",
   });
   tabelas.push({
@@ -222,7 +222,7 @@ export function construirConsolidadosSalariais(rows: Row[]): ConsolidadoTabela[]
       { header: "Cargo", key: "cargo", width: 40 },
       { header: "Qtd Ocupantes", key: "qtd", width: 14 },
       { header: "Salário Médio", key: "salario_medio", width: 20 },
-      { header: "Massa Salarial Bruta", key: "massa_salarial_bruta", width: 22 },
+      { header: "Massa Salarial Bruta", key: "valor_massa_bruta", width: 22 },
       { header: "% da Folha", key: "pct_folha", width: 14 },
     ],
     linhas: linhasCargo,
