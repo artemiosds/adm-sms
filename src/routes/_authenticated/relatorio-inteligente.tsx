@@ -1049,7 +1049,76 @@ function StepPrevia({
   );
 }
 
+function ConsolidadosPreview({ tabelas }: { tabelas: ConsolidadoTabela[] }) {
+  return (
+    <div className="space-y-4">
+      <div className="rounded-md border-l-4 border-primary bg-primary/5 px-3 py-2 text-xs">
+        <span className="font-semibold uppercase text-primary">Consolidação financeira</span>{" "}
+        — sínteses por unidade, setor, cargo e vínculo, calculadas sobre o mesmo recorte de
+        filtros da listagem analítica.
+      </div>
+      {tabelas.map((t) => (
+        <div key={t.titulo} className="rounded-md border">
+          <div className="border-b bg-muted/30 px-3 py-2">
+            <div className="text-sm font-semibold">{t.titulo}</div>
+            {t.descricao && (
+              <div className="text-[11px] text-muted-foreground">{t.descricao}</div>
+            )}
+          </div>
+          <div className="max-h-[420px] overflow-auto">
+            <table className="w-full text-xs">
+              <thead className="sticky top-0 bg-muted/50">
+                <tr>
+                  {t.colunas.map((c, i) => (
+                    <th
+                      key={c.key}
+                      className={
+                        "whitespace-nowrap px-2 py-1.5 font-semibold " +
+                        (i === 0 ? "text-left" : "text-right")
+                      }
+                    >
+                      {c.header}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {t.linhas.map((r, ri) => {
+                  const isTotal = t.totaisIdx.includes(ri);
+                  return (
+                    <tr
+                      key={ri}
+                      className={
+                        isTotal
+                          ? "border-t-2 border-primary/50 bg-primary/10 font-semibold"
+                          : "border-t hover:bg-muted/20"
+                      }
+                    >
+                      {t.colunas.map((c, i) => (
+                        <td
+                          key={c.key}
+                          className={
+                            "px-2 py-1 " +
+                            (i === 0 ? "text-left" : "text-right tabular-nums")
+                          }
+                        >
+                          {fmtCell(r[c.key], c.key)}
+                        </td>
+                      ))}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function IndiceCard({ indice }: { indice: IndiceAutomatico }) {
+
   const cor =
     indice.nivel === "excelente"
       ? "text-emerald-700 border-emerald-300 bg-emerald-50"
