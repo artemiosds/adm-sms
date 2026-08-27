@@ -122,13 +122,15 @@ const PADDING_CELULA = 0.3; // mm de cada lado
 
 function fmt(v: number | string | null | undefined): string {
   if (v == null || v === "") return "";
-  if (typeof v === "string") return v;
-  const x = Number(String(v).replace(",", "."));
-  if (isNaN(x)) return String(v);
+  if (typeof v === "string") {
+    // Textos (ocorrências, situações) são preservados; números em pt-BR são normalizados.
+    if (!/^\s*R?\$?\s*-?[\d.,]+\s*$/.test(v)) return v;
+  }
+  const x = parseNumeroPtBr(v);
   if (x === 0) return "0";
-  if (Number.isInteger(x)) return String(x);
-  return x.toFixed(2).replace(".", ",");
+  return formatarNumeroPtBr(x);
 }
+
 
 function ptToMm(pt: number): number {
   return pt * 0.352778;
