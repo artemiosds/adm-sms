@@ -1,4 +1,5 @@
 import { ErrorComponent } from "@/components/shared/ErrorComponent";
+import { parseNumeroPtBr } from "@/lib/numero-ptbr";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { AnexosEntidade } from "@/components/frequencias/anexos-entidade";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
