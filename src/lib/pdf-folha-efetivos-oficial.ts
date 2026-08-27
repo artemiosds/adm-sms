@@ -430,7 +430,7 @@ function drawProfissionalRow(doc: jsPDF, y: number, item: ItemFolha): number {
     hp: fmt(item.profissional.h_p),
     ch: fmt(item.profissional.c_h),
     jorn: fmt(item.profissional.jorn),
-    dias: isStatus ? situacao : fmt(t.dias_trabalhados),
+    dias: isStatus ? situacao : diasTrabalhados(item),
     falta: isStatus ? situacao : fmt(t.dias_falta),
     att: isStatus ? situacao : fmt(t.atestado),
     mat: isStatus ? situacao : fmt(t.maternidade),
