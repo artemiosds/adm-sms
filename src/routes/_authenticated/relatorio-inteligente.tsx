@@ -63,6 +63,12 @@ import { statsFor, numericFields } from "@/lib/relatorio-inteligente/agregacoes"
 import { agrupar, type GroupNode } from "@/lib/relatorio-inteligente/agrupamento";
 import { BlockChart } from "@/components/relatorio-inteligente/block-chart";
 import {
+  construirConsolidadosSalariais,
+  BLOCO_SALARIAL_ID,
+  type ConsolidadoTabela,
+} from "@/lib/relatorio-inteligente/consolidados-salariais";
+
+import {
   exportarPdfMulti,
   exportarExcelMulti,
   exportarCsvMulti,
