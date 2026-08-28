@@ -344,6 +344,57 @@ export function FrequenciasEfetivosPage() {
   const salvarFn = useServerFn(salvarFolhaEfetivos);
   const enviarFn = useServerFn(enviarFolhaEfetivos);
 
+  // ---------- Autosalvamento em segundo plano ----------
+  const linhasRef = useRef<Record<string, LinhaState>>({});
+  linhasRef.current = linhas;
+
+  const canEditRef = useRef(canEdit);
+  canEditRef.current = canEdit;
+
+  const autosaveRun = useCallback(async () => {
+    if (!canEditRef.current || !competenciaId || !unidadeId) return;
+    const pendentes = Object.values(linhasRef.current).filter((l) => l._dirty);
+    if (!pendentes.length) return;
+
+    const list = pendentes.map(mapLinhaPayloadEfetivos);
+    const snapshot = new Map(list.map((p) => [p.profissional_id, JSON.stringify(p)]));
+
+    await salvarFn({
+      data: { competencia_id: competenciaId, unidade_id: unidadeId, setor_id: setorUnico, linhas: list },
+    });
+
+    // Limpa o "sujo" apenas das linhas cujo conteúdo não mudou durante o envio.
+    setLinhas((prev) => {
+      const next: Record<string, LinhaState> = { ...prev };
+      for (const [pid, serial] of snapshot) {
+        const atual = next[pid];
+        if (!atual) continue;
+        if (JSON.stringify(mapLinhaPayloadEfetivos(atual)) === serial) {
+          next[pid] = { ...atual, _dirty: false };
+        }
+      }
+      return next;
+    });
+
+    qc.invalidateQueries({ queryKey: ["frequencia-resumo", competenciaId, unidadeId] });
+  }, [competenciaId, unidadeId, setorUnico, salvarFn, qc]);
+
+  const autosave = useAutosaveFolha({ enabled: canEdit, run: autosaveRun, delay: 900 });
+  const autosaveRef = useRef(autosave);
+  autosaveRef.current = autosave;
+
+  // Grava o que estiver pendente ao sair da página / trocar de aba.
+  useEffect(() => {
+    const handler = () => {
+      if (Object.values(linhasRef.current).some((l) => l._dirty)) autosaveRef.current.flush();
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => {
+      window.removeEventListener("beforeunload", handler);
+      handler();
+    };
+  }, []);
+
   const updateCampo = useCallback((pid: string, campo: keyof LinhaState, valor: number | string) => {
     setLinhas((prev) => {
       const cur = prev[pid];
