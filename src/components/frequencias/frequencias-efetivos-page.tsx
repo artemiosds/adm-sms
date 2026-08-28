@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { parseNumeroPtBr } from "@/lib/numero-ptbr";
 import { useServerFn } from "@tanstack/react-start";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import {
   listarFolhaEfetivos,
@@ -40,6 +40,8 @@ import {
 import { UnidadeFilter } from "@/components/shared";
 
 import { LinhaAnexos } from "@/components/frequencias/linha-anexos";
+import { AutosaveBadge } from "@/components/frequencias/autosave-badge";
+import { useAutosaveFolha } from "@/hooks/use-autosave-folha";
 import { EnviarFolhaDialog } from "@/components/frequencias/enviar-folha-dialog";
 import {
   contarSituacoes,
@@ -107,7 +109,7 @@ type LinhaState = {
 };
 
 /** Converte uma linha da grade no payload aceito pelo servidor. */
-function mapLinhaPayloadEfetivos(l: LinhaState) {
+function mapLinhaPayloadEfetivos(l: LinhaState): any {
   return {
     profissional_id: l.profissional_id,
     status_linha: l.status_linha,
