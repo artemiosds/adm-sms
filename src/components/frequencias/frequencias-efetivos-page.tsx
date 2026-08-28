@@ -499,9 +499,6 @@ export function FrequenciasEfetivosPage() {
         for (const [k, v] of Object.entries(prev)) next[k] = { ...v, _dirty: false };
         return next;
       });
-    onSuccess: (r: any) => {
-      toast.success(`Enviado para aprovação (${r?.enviadas ?? 0} linhas).`);
-      setEnviarAberto(false);
       qc.invalidateQueries({ queryKey: ["folha-efetivos", competenciaId, unidadeId] });
       qc.invalidateQueries({ queryKey: ["frequencia-resumo", competenciaId, unidadeId] });
     },
