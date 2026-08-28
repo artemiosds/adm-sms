@@ -371,25 +371,33 @@ export function FrequenciasContratadosPage() {
   const [linhas, setLinhas] = useState<Record<string, LinhaState>>({});
   useEffect(() => {
     if (!folha) return;
-    const next: Record<string, LinhaState> = {};
-    for (const item of folha) {
-      const l = item.linha;
-      next[item.profissional.id] = {
-        profissional_id: item.profissional.id,
-        status: (l?.status as StatusFreq) ?? "rascunho",
-        dias_trabalhados: String(l?.dias_trabalhados ?? "0"),
-        dias_falta: String(l?.dias_falta ?? "0"),
-        atestado: String(l?.atestado ?? "0"),
-        he_50: String(l?.he_50 ?? "0"),
-        he_100: String(l?.he_100 ?? "0"),
-        adn: String(l?.adn ?? "0"),
-        plantoes: String(l?.plantoes ?? "0"),
-        sobreaviso: String(l?.sobreaviso ?? "0"),
-        incentivo: String(l?.incentivo ?? "0"),
-        observacoes: l?.observacoes ?? "",
-      };
-    }
-    setLinhas(next);
+    setLinhas((prev) => {
+      const next: Record<string, LinhaState> = {};
+      for (const item of folha) {
+        const l = item.linha;
+        const anterior = prev[item.profissional.id];
+        // Nunca sobrescreve valores digitados e ainda não salvos (refetch/realtime).
+        if (anterior?._dirty) {
+          next[item.profissional.id] = anterior;
+          continue;
+        }
+        next[item.profissional.id] = {
+          profissional_id: item.profissional.id,
+          status: (l?.status as StatusFreq) ?? "rascunho",
+          dias_trabalhados: String(l?.dias_trabalhados ?? "0"),
+          dias_falta: String(l?.dias_falta ?? "0"),
+          atestado: String(l?.atestado ?? "0"),
+          he_50: String(l?.he_50 ?? "0"),
+          he_100: String(l?.he_100 ?? "0"),
+          adn: String(l?.adn ?? "0"),
+          plantoes: String(l?.plantoes ?? "0"),
+          sobreaviso: String(l?.sobreaviso ?? "0"),
+          incentivo: String(l?.incentivo ?? "0"),
+          observacoes: l?.observacoes ?? "",
+        };
+      }
+      return next;
+    });
   }, [folha]);
 
   const isMaster = !!me?.is_master;
