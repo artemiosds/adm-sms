@@ -451,18 +451,19 @@ export function FrequenciasContratadosPage() {
   canEditRef.current = canEdit;
 
   const autosaveRun = useCallback(async () => {
-    if (!canEditRef.current || !competenciaId || !unidadeId) return;
+    if (!canEditRef.current || !competenciaId || !unidadeId) return false;
     const pendentes = Object.values(linhasRef.current).filter((l) => l._dirty);
-    if (!pendentes.length) return;
+    if (!pendentes.length) return false;
 
     const list = pendentes.map(mapLinhaPayloadContratados);
     const snapshot = new Map<string, string>(
       list.map((p: any) => [p.profissional_id as string, JSON.stringify(p)]),
     );
 
-    await salvarFn({
+    const result = await salvarFn({
       data: { competencia_id: competenciaId, unidade_id: unidadeId, setor_id: setorUnico, linhas: list },
     });
+    if (!result?.ok || result.processadas !== list.length) return false;
 
     // Limpa o "sujo" apenas das linhas cujo conteúdo não mudou durante o envio.
     setLinhas((prev) => {
@@ -478,6 +479,7 @@ export function FrequenciasContratadosPage() {
     });
 
     qc.invalidateQueries({ queryKey: ["frequencia-resumo", competenciaId, unidadeId] });
+    return true;
   }, [competenciaId, unidadeId, setorUnico, salvarFn, qc]);
 
   const autosave = useAutosaveFolha({ enabled: canEdit, run: autosaveRun, delay: 900 });
@@ -496,50 +498,17 @@ export function FrequenciasContratadosPage() {
   }, []);
 
   const updateCampo = useCallback((pid: string, campo: keyof LinhaState, valor: number | string) => {
-    setLinhas((prev) => {
-      const cur = prev[pid];
-      if (!cur) return prev;
-      const next = { ...prev, [pid]: { ...cur, [campo]: valor, _dirty: true } };
-
-      // Sincronização automática para 'status' (Edição via Modal)
-      if (campo === "status") {
-        const sId = (setorFilter.length > 0 && setorFilter.length !== (setoresOpts?.length ?? 0)) ? setorFilter[0] : undefined;
-        salvarFn({
-          data: {
-            competencia_id: competenciaId,
-            unidade_id: unidadeId,
-            setor_id: sId,
-            linhas: [{
-              profissional_id: pid,
-              status: valor as StatusFreq,
-              dias_trabalhados: cur.dias_trabalhados,
-              dias_falta: cur.dias_falta,
-              atestado: cur.atestado,
-              he_50: cur.he_50,
-              he_100: cur.he_100,
-              adn: cur.adn,
-              plantoes: cur.plantoes,
-              sobreaviso: cur.sobreaviso,
-              incentivo: cur.incentivo,
-              observacoes: cur.observacoes || null,
-            }],
-          },
-        }).then(() => {
-          qc.invalidateQueries({ queryKey: ["folha-contratados"] });
-          qc.invalidateQueries({ queryKey: ["frequencia-resumo"] });
-        });
-      }
-
-      return next;
-    });
+    const cur = linhasRef.current[pid];
+    if (!cur) return;
+    const next = { ...linhasRef.current, [pid]: { ...cur, [campo]: valor, _dirty: true } };
+    linhasRef.current = next;
+    setLinhas(next);
 
     // Autosalve: campos numéricos chegam aqui no onBlur (grava na hora);
     // texto livre usa debounce enquanto o usuário digita.
-    if (campo !== "status") {
-      if (campo === "observacoes") autosaveRef.current.schedule();
-      else autosaveRef.current.flush();
-    }
-  }, [competenciaId, unidadeId, setorFilter, setoresOpts, salvarFn, qc]);
+    if (campo === "observacoes") autosaveRef.current.schedule();
+    else autosaveRef.current.flush();
+  }, []);
 
   const mSalvar = useMutation({
     mutationFn: async () => {
@@ -928,6 +897,10 @@ export function FrequenciasContratadosPage() {
           });
         });
         if (touched) toast.success(`${touched} valor(es) colado(s).`);
+        if (touched) {
+          linhasRef.current = next;
+          autosaveRef.current.flush();
+        }
         return next;
       });
     },

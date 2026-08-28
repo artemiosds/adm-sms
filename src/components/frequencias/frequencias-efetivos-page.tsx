@@ -379,16 +379,17 @@ export function FrequenciasEfetivosPage() {
   canEditRef.current = canEdit;
 
   const autosaveRun = useCallback(async () => {
-    if (!canEditRef.current || !competenciaId || !unidadeId) return;
+    if (!canEditRef.current || !competenciaId || !unidadeId) return false;
     const pendentes = Object.values(linhasRef.current).filter((l) => l._dirty);
-    if (!pendentes.length) return;
+    if (!pendentes.length) return false;
 
     const list = pendentes.map(mapLinhaPayloadEfetivos);
     const snapshot = new Map(list.map((p) => [p.profissional_id, JSON.stringify(p)]));
 
-    await salvarFn({
+    const result = await salvarFn({
       data: { competencia_id: competenciaId, unidade_id: unidadeId, setor_id: setorUnico, linhas: list },
     });
+    if (!result?.ok || result.processadas !== list.length) return false;
 
     // Limpa o "sujo" apenas das linhas cujo conteúdo não mudou durante o envio.
     setLinhas((prev) => {
@@ -404,6 +405,7 @@ export function FrequenciasEfetivosPage() {
     });
 
     qc.invalidateQueries({ queryKey: ["frequencia-resumo", competenciaId, unidadeId] });
+    return true;
   }, [competenciaId, unidadeId, setorUnico, salvarFn, qc]);
 
   const autosave = useAutosaveFolha({ enabled: canEdit, run: autosaveRun, delay: 900 });
@@ -423,60 +425,17 @@ export function FrequenciasEfetivosPage() {
   }, []);
 
   const updateCampo = useCallback((pid: string, campo: keyof LinhaState, valor: number | string) => {
-    setLinhas((prev) => {
-      const cur = prev[pid];
-      if (!cur) return prev;
-      const next = { ...prev, [pid]: { ...cur, [campo]: valor, _dirty: true } };
-      
-      // Sincronização automática para 'status_linha' (Edição via Modal)
-      if (campo === "status_linha") {
-        // Mapeia os status da folha para os permitidos na linha (pendente, aprovada, rejeitada)
-        let mappedStatus: "pendente" | "aprovada" | "rejeitada" = "pendente";
-        if (valor === "aprovada") mappedStatus = "aprovada";
-        if (valor === "rejeitada") mappedStatus = "rejeitada";
-
-        salvarFn({
-          data: { 
-            competencia_id: competenciaId, 
-            unidade_id: unidadeId, 
-            setor_id: setorUnico,
-            linhas: [{
-              profissional_id: pid,
-              status_linha: mappedStatus,
-              dias_trabalhados: cur.dias_trabalhados,
-              faltas_injustificadas: cur.faltas_injustificadas,
-              atestado: cur.atestado,
-              he_50: cur.he_50,
-              he_100: cur.he_100,
-              ferias_terco: cur.ferias_terco,
-              ferias_integral: cur.ferias_integral,
-              sal_sub_h: cur.sal_sub_h,
-              adicional_noturno: cur.adicional_noturno,
-              aulas_suplementares: cur.aulas_suplementares,
-              sobreaviso: cur.sobreaviso,
-              plantoes_extras: cur.plantoes_extras,
-              incentivo: cur.incentivo,
-              ferias: cur.ferias,
-              licenca_premio: cur.licenca_premio,
-              observacoes: cur.observacoes || null,
-            }]
-          },
-        }).then(() => {
-          qc.invalidateQueries({ queryKey: ["folha-efetivos"] });
-          qc.invalidateQueries({ queryKey: ["frequencia-resumo"] });
-        });
-      }
-      
-      return next;
-    });
+    const cur = linhasRef.current[pid];
+    if (!cur) return;
+    const next = { ...linhasRef.current, [pid]: { ...cur, [campo]: valor, _dirty: true } };
+    linhasRef.current = next;
+    setLinhas(next);
 
     // Autosalve: campos numéricos já chegam aqui no onBlur (grava na hora);
     // texto livre usa debounce enquanto o usuário digita.
-    if (campo !== "status_linha") {
-      if (campo === "observacoes") autosaveRef.current.schedule();
-      else autosaveRef.current.flush();
-    }
-  }, [competenciaId, unidadeId, setorUnico, salvarFn, qc]);
+    if (campo === "observacoes") autosaveRef.current.schedule();
+    else autosaveRef.current.flush();
+  }, []);
 
   function payloadDirty(): any[] {
     return Object.values(linhas)
@@ -726,6 +685,10 @@ export function FrequenciasEfetivosPage() {
           });
         });
         if (touched) toast.success(`${touched} valor(es) colado(s).`);
+        if (touched) {
+          linhasRef.current = next;
+          autosaveRef.current.flush();
+        }
         return next;
       });
     },
