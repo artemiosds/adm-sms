@@ -453,7 +453,7 @@ export function FrequenciasEfetivosPage() {
       
       try {
         const res = await salvarFn({
-          data: { competencia_id: competenciaId, unidade_id: unidadeId, linhas: list },
+          data: { competencia_id: competenciaId, unidade_id: unidadeId, setor_id: setorUnico, linhas: list },
         });
         console.log("DEBUG_SALVAMENTO: Resposta servidor", res);
         return res;
@@ -464,7 +464,13 @@ export function FrequenciasEfetivosPage() {
     },
     onSuccess: (r: any) => {
       if (r?.sem_alteracoes) toast.info("Nenhuma alteração para salvar.");
-      else toast.success("Rascunho salvo.");
+      else toast.success("Alterações salvas com sucesso!");
+      // Só após confirmação de escrita as linhas deixam de ser "sujas".
+      setLinhas((prev) => {
+        const next: Record<string, LinhaState> = {};
+        for (const [k, v] of Object.entries(prev)) next[k] = { ...v, _dirty: false };
+        return next;
+      });
       qc.invalidateQueries({ queryKey: ["folha-efetivos", competenciaId, unidadeId] });
       qc.invalidateQueries({ queryKey: ["frequencia-resumo", competenciaId, unidadeId] });
     },
@@ -479,13 +485,20 @@ export function FrequenciasEfetivosPage() {
       const list = payloadDirty();
       if (list.length) {
         await salvarFn({
-          data: { competencia_id: competenciaId, unidade_id: unidadeId, linhas: list },
+          data: { competencia_id: competenciaId, unidade_id: unidadeId, setor_id: setorUnico, linhas: list },
         });
       }
       
-      const sId = (setorFilter.length > 0 && setorFilter.length !== (setoresOpts?.length ?? 0)) ? setorFilter[0] : undefined;
-      return enviarFn({ data: { competencia_id: competenciaId, unidade_id: unidadeId, setor_id: sId } });
+      return enviarFn({ data: { competencia_id: competenciaId, unidade_id: unidadeId, setor_id: setorUnico } });
     },
+    onSuccess: (r: any) => {
+      toast.success(`Enviado para aprovação (${r?.enviadas ?? 0} linhas).`);
+      setEnviarAberto(false);
+      setLinhas((prev) => {
+        const next: Record<string, LinhaState> = {};
+        for (const [k, v] of Object.entries(prev)) next[k] = { ...v, _dirty: false };
+        return next;
+      });
     onSuccess: (r: any) => {
       toast.success(`Enviado para aprovação (${r?.enviadas ?? 0} linhas).`);
       setEnviarAberto(false);
