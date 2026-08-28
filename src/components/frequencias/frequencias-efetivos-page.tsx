@@ -391,7 +391,7 @@ export function FrequenciasEfetivosPage() {
       
       return next;
     });
-  }, [competenciaId, unidadeId, salvarFn, qc]);
+  }, [competenciaId, unidadeId, setorUnico, salvarFn, qc]);
 
   function payloadDirty(): any[] {
     return Object.values(linhas)
