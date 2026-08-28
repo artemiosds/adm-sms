@@ -1003,7 +1003,8 @@ export function FrequenciasContratadosPage() {
             para conferência da folha de pagamento.
           </p>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <AutosaveBadge status={autosave.status} onRetry={autosave.retry} />
           <Button
             variant="outline"
             onClick={() => mSalvar.mutate()}
