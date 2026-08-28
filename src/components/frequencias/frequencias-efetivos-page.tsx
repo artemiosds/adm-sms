@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { parseNumeroPtBr } from "@/lib/numero-ptbr";
 import { useServerFn } from "@tanstack/react-start";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import {
   listarFolhaEfetivos,
@@ -40,6 +40,8 @@ import {
 import { UnidadeFilter } from "@/components/shared";
 
 import { LinhaAnexos } from "@/components/frequencias/linha-anexos";
+import { AutosaveBadge } from "@/components/frequencias/autosave-badge";
+import { useAutosaveFolha } from "@/hooks/use-autosave-folha";
 import { EnviarFolhaDialog } from "@/components/frequencias/enviar-folha-dialog";
 import {
   contarSituacoes,
@@ -105,6 +107,31 @@ type LinhaState = {
   observacoes: string;
   _dirty?: boolean;
 };
+
+/** Converte uma linha da grade no payload aceito pelo servidor. */
+function mapLinhaPayloadEfetivos(l: LinhaState): any {
+  return {
+    profissional_id: l.profissional_id,
+    status_linha: l.status_linha,
+    dias_trabalhados: l.dias_trabalhados,
+    faltas_injustificadas: l.faltas_injustificadas,
+    atestado: l.atestado,
+    he_50: l.he_50,
+    he_100: l.he_100,
+    ferias_terco: l.ferias_terco,
+    ferias_integral: l.ferias_integral,
+    sal_sub_h: l.sal_sub_h,
+    adicional_noturno: l.adicional_noturno,
+    aulas_suplementares: l.aulas_suplementares,
+    sobreaviso: l.sobreaviso,
+    plantoes_extras: l.plantoes_extras,
+    incentivo: l.incentivo,
+    ferias: l.ferias,
+    licenca_premio: l.licenca_premio,
+    observacoes: l.observacoes || null,
+  };
+}
+
 
 const CAMPOS_OFICIAIS = [
   { key: "dias_trabalhados", label: "Dias" },
@@ -344,6 +371,57 @@ export function FrequenciasEfetivosPage() {
   const salvarFn = useServerFn(salvarFolhaEfetivos);
   const enviarFn = useServerFn(enviarFolhaEfetivos);
 
+  // ---------- Autosalvamento em segundo plano ----------
+  const linhasRef = useRef<Record<string, LinhaState>>({});
+  linhasRef.current = linhas;
+
+  const canEditRef = useRef(canEdit);
+  canEditRef.current = canEdit;
+
+  const autosaveRun = useCallback(async () => {
+    if (!canEditRef.current || !competenciaId || !unidadeId) return;
+    const pendentes = Object.values(linhasRef.current).filter((l) => l._dirty);
+    if (!pendentes.length) return;
+
+    const list = pendentes.map(mapLinhaPayloadEfetivos);
+    const snapshot = new Map(list.map((p) => [p.profissional_id, JSON.stringify(p)]));
+
+    await salvarFn({
+      data: { competencia_id: competenciaId, unidade_id: unidadeId, setor_id: setorUnico, linhas: list },
+    });
+
+    // Limpa o "sujo" apenas das linhas cujo conteúdo não mudou durante o envio.
+    setLinhas((prev) => {
+      const next: Record<string, LinhaState> = { ...prev };
+      for (const [pid, serial] of snapshot) {
+        const atual = next[pid];
+        if (!atual) continue;
+        if (JSON.stringify(mapLinhaPayloadEfetivos(atual)) === serial) {
+          next[pid] = { ...atual, _dirty: false };
+        }
+      }
+      return next;
+    });
+
+    qc.invalidateQueries({ queryKey: ["frequencia-resumo", competenciaId, unidadeId] });
+  }, [competenciaId, unidadeId, setorUnico, salvarFn, qc]);
+
+  const autosave = useAutosaveFolha({ enabled: canEdit, run: autosaveRun, delay: 900 });
+  const autosaveRef = useRef(autosave);
+  autosaveRef.current = autosave;
+
+  // Grava o que estiver pendente ao sair da página / trocar de aba.
+  useEffect(() => {
+    const handler = () => {
+      if (Object.values(linhasRef.current).some((l) => l._dirty)) autosaveRef.current.flush();
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => {
+      window.removeEventListener("beforeunload", handler);
+      handler();
+    };
+  }, []);
+
   const updateCampo = useCallback((pid: string, campo: keyof LinhaState, valor: number | string) => {
     setLinhas((prev) => {
       const cur = prev[pid];
@@ -391,6 +469,13 @@ export function FrequenciasEfetivosPage() {
       
       return next;
     });
+
+    // Autosalve: campos numéricos já chegam aqui no onBlur (grava na hora);
+    // texto livre usa debounce enquanto o usuário digita.
+    if (campo !== "status_linha") {
+      if (campo === "observacoes") autosaveRef.current.schedule();
+      else autosaveRef.current.flush();
+    }
   }, [competenciaId, unidadeId, setorUnico, salvarFn, qc]);
 
   function payloadDirty(): any[] {
@@ -694,6 +779,7 @@ export function FrequenciasEfetivosPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <AutosaveBadge status={autosave.status} onRetry={autosave.retry} />
           <Button
             variant="outline"
             onClick={() => mSalvar.mutate()}
