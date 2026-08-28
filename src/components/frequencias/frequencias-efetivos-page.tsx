@@ -779,6 +779,7 @@ export function FrequenciasEfetivosPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <AutosaveBadge status={autosave.status} onRetry={autosave.retry} />
           <Button
             variant="outline"
             onClick={() => mSalvar.mutate()}
