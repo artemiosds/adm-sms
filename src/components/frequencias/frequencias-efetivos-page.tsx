@@ -361,6 +361,7 @@ export function FrequenciasEfetivosPage() {
           data: { 
             competencia_id: competenciaId, 
             unidade_id: unidadeId, 
+            setor_id: setorUnico,
             linhas: [{
               profissional_id: pid,
               status_linha: mappedStatus,
