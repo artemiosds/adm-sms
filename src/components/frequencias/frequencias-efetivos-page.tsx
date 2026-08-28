@@ -469,6 +469,13 @@ export function FrequenciasEfetivosPage() {
       
       return next;
     });
+
+    // Autosalve: campos numéricos já chegam aqui no onBlur (grava na hora);
+    // texto livre usa debounce enquanto o usuário digita.
+    if (campo !== "status_linha") {
+      if (campo === "observacoes") autosaveRef.current.schedule();
+      else autosaveRef.current.flush();
+    }
   }, [competenciaId, unidadeId, setorUnico, salvarFn, qc]);
 
   function payloadDirty(): any[] {
