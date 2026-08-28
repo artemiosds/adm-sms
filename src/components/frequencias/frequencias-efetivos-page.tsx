@@ -106,6 +106,31 @@ type LinhaState = {
   _dirty?: boolean;
 };
 
+/** Converte uma linha da grade no payload aceito pelo servidor. */
+function mapLinhaPayloadEfetivos(l: LinhaState) {
+  return {
+    profissional_id: l.profissional_id,
+    status_linha: l.status_linha,
+    dias_trabalhados: l.dias_trabalhados,
+    faltas_injustificadas: l.faltas_injustificadas,
+    atestado: l.atestado,
+    he_50: l.he_50,
+    he_100: l.he_100,
+    ferias_terco: l.ferias_terco,
+    ferias_integral: l.ferias_integral,
+    sal_sub_h: l.sal_sub_h,
+    adicional_noturno: l.adicional_noturno,
+    aulas_suplementares: l.aulas_suplementares,
+    sobreaviso: l.sobreaviso,
+    plantoes_extras: l.plantoes_extras,
+    incentivo: l.incentivo,
+    ferias: l.ferias,
+    licenca_premio: l.licenca_premio,
+    observacoes: l.observacoes || null,
+  };
+}
+
+
 const CAMPOS_OFICIAIS = [
   { key: "dias_trabalhados", label: "Dias" },
   { key: "faltas_injustificadas", label: "Dias Falta" },
