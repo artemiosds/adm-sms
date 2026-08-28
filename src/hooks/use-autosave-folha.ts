@@ -6,7 +6,7 @@ type Options = {
   /** Só agenda/executa quando true (folha editável). */
   enabled: boolean;
   /** Executa a gravação das linhas pendentes. Deve resolver após confirmação do servidor. */
-  run: () => Promise<void>;
+  run: () => Promise<boolean>;
   /** Debounce em ms (padrão 900). */
   delay?: number;
 };
@@ -28,20 +28,25 @@ export function useAutosaveFolha({ enabled, run, delay = 900 }: Options) {
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const inFlightRef = useRef(false);
   const againRef = useRef(false);
+  const pendingRef = useRef(false);
 
   const execute = useCallback(async () => {
     if (!enabledRef.current) return;
+    if (!pendingRef.current) return;
     if (inFlightRef.current) {
       againRef.current = true;
       return;
     }
+    pendingRef.current = false;
     inFlightRef.current = true;
     setStatus("saving");
     try {
-      await runRef.current();
-      setStatus("saved");
+      const persisted = await runRef.current();
+      if (!persisted) throw new Error("O servidor não confirmou a persistência das alterações.");
+      setStatus(pendingRef.current || againRef.current ? "saving" : "saved");
     } catch (e) {
       console.error("AUTOSAVE: falha ao salvar", e);
+      pendingRef.current = true;
       setStatus("error");
     } finally {
       inFlightRef.current = false;
@@ -61,6 +66,7 @@ export function useAutosaveFolha({ enabled, run, delay = 900 }: Options) {
 
   const schedule = useCallback(() => {
     if (!enabledRef.current) return;
+    pendingRef.current = true;
     clearTimer();
     timerRef.current = setTimeout(() => {
       timerRef.current = null;
@@ -70,6 +76,8 @@ export function useAutosaveFolha({ enabled, run, delay = 900 }: Options) {
 
   /** Dispara imediatamente (onBlur / saída da página). */
   const flush = useCallback(() => {
+    if (!enabledRef.current) return;
+    pendingRef.current = true;
     clearTimer();
     void execute();
   }, [clearTimer, execute]);
