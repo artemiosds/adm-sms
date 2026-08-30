@@ -46,10 +46,13 @@ export const Route = createFileRoute("/api/public/hooks/purgar-documentos")({
         );
         if (!alvos.length) return Response.json({ ok: true, purgados: 0 });
 
-        const { error: rmErr } = await supa.storage
-          .from("documentos")
-          .remove(alvos.map((d) => d.storage_path));
-        if (rmErr) return Response.json({ error: rmErr.message }, { status: 500 });
+        // Remove no destino correto: R2 (prefixo `r2:`) ou Supabase Storage (legado).
+        const resultados = await Promise.all(
+          alvos.map((d) => removerDocumento(supa, d.storage_path)),
+        );
+        if (resultados.some((ok) => !ok)) {
+          return Response.json({ error: "Falha ao remover um ou mais arquivos." }, { status: 500 });
+        }
 
         for (const d of alvos) {
           await supa
