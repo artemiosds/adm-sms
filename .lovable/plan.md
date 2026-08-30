@@ -66,10 +66,13 @@ Ver     ->  obterUrlVisualizacao decide: prefixo "r2:" -> presigned GET 5 min
 
 ## Arquivos
 
-- `src/lib/storage-r2.server.ts` (server-only): assinador SigV4, `criarUrlUpload`,
-  `criarUrlLeitura` (GET 5 min, sempre assinada), `validarObjeto` (HEAD + limite),
-  `removerArquivo`. Endpoint `https://<R2_ACCOUNT_ID>.r2.cloudflarestorage.com`,
-  região `auto`. Nenhuma URL pública referenciada.
+- `src/lib/storage-r2.server.ts` (server-only): cliente `AwsClient` do **`aws4fetch`**
+  (`bun add aws4fetch`), com `criarUrlUpload` e `criarUrlLeitura` (GET 5 min, sempre
+  assinada) via `sign(..., { aws: { signQuery: true } })`, e `validarObjeto` (HEAD +
+  limite) e `removerArquivo` via `client.fetch`. Endpoint
+  `https://<R2_ACCOUNT_ID>.r2.cloudflarestorage.com`, região `auto`, service `s3`.
+  Nenhuma URL pública referenciada.
+
 - `src/lib/storage-r2.functions.ts` (wrapper fino, `requireSupabaseAuth`):
   `solicitarUploadR2`, `confirmarUploadR2`, `resolverUrlDocumento`.
 - `src/lib/storage-universal.ts` (client-safe): `isR2`, `isLegadoSupabase`,
