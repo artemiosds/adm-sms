@@ -1690,7 +1690,7 @@ function AnexosDialog({
 
   const removerAnexo = async (doc: DocRow) => {
     try {
-      await supabase.storage.from("documentos").remove([doc.storage_path]);
+      await removerArquivoUniversal(doc.storage_path);
       const { error } = await supabase
         .from("documentos")
         .update({ deleted_at: new Date().toISOString(), deleted_by: userId })
@@ -1704,14 +1704,12 @@ function AnexosDialog({
   };
 
   const baixar = async (doc: DocRow) => {
-    const { data, error } = await supabase.storage
-      .from("documentos")
-      .createSignedUrl(doc.storage_path, 60);
-    if (error) {
-      toast.error(error.message);
+    const url = await obterUrlVisualizacao(doc.storage_path, { expiraEm: 60 });
+    if (!url) {
+      toast.error("Não foi possível abrir o documento.");
       return;
     }
-    window.open(data.signedUrl, "_blank");
+    window.open(url, "_blank");
   };
 
   return (
