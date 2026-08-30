@@ -828,9 +828,7 @@ export const listarAnexosRemovidosLinha = createServerFn({ method: "POST" })
     return {
       anexos: await Promise.all(
         rows.map(async (d: Record<string, unknown>) => {
-          const { data: signed } = await supabase.storage
-            .from("documentos")
-            .createSignedUrl(d.storage_path as string, 300);
+          const url = await assinarUrlDocumento(supabase, d.storage_path as string);
           return {
             id: d.id as string,
             nome: d.nome as string,
@@ -838,7 +836,7 @@ export const listarAnexosRemovidosLinha = createServerFn({ method: "POST" })
             tamanho_bytes: Number(d.tamanho_bytes ?? 0),
             deleted_at: d.deleted_at as string,
             purga_apos: (d.purga_apos ?? null) as string | null,
-            url: signed?.signedUrl ?? null,
+            url,
           };
         }),
       ),
