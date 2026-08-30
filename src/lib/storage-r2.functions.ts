@@ -77,3 +77,12 @@ export const resolverUrlDocumento = createServerFn({ method: "POST" })
     });
     return { url };
   });
+
+/** Exclui o binário no destino correto (R2 ou Supabase legado). */
+export const removerDocumentoStorage = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((d: z.infer<typeof ResolverSchema>) => ResolverSchema.parse(d))
+  .handler(async ({ data, context }) => {
+    await removerDocumento(context.supabase as never, data.storage_path, data.bucket ?? "documentos");
+    return { ok: true as const };
+  });
