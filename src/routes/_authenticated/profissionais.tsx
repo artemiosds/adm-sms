@@ -7,10 +7,12 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { supabase } from "@/integrations/supabase/client";
 import {
   FOTO_BUCKET,
+  FOTO_TAMANHO_MAX,
   montarCaminhoFoto,
   useFotoAssinada,
   validarFoto,
 } from "@/lib/foto-profissional";
+import { enviarArquivoUniversal } from "@/lib/storage-universal";
 import { reprocessarRegistroConsolidado } from "@/lib/piso-consolidacao.functions";
 import { OfflineButton } from "@/components/shared/OfflineButton";
 import { Button } from "@/components/ui/button";
