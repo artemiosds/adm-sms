@@ -1480,11 +1480,14 @@ function ProfissionalFormBody({
     try {
       const id = getValues("id");
       const path = montarCaminhoFoto(id, check.mime);
-      const { error: upErr } = await supabase.storage
-        .from(FOTO_BUCKET)
-        .upload(path, file, { cacheControl: "3600", upsert: false, contentType: check.mime });
-      if (upErr) throw upErr;
-      setValue("foto_url", path);
+      const { storage_path } = await enviarArquivoUniversal({
+        file,
+        caminho: path,
+        mime: check.mime,
+        limiteBytes: FOTO_TAMANHO_MAX,
+        bucket: FOTO_BUCKET,
+      });
+      setValue("foto_url", storage_path);
       toast.success("Foto atualizada");
     } catch (err) {
       console.error("[upload avatar]", err);
