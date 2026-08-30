@@ -900,7 +900,7 @@ export const descartarAnexosPendentes = createServerFn({ method: "POST" })
     const { error: dErr } = await supabase.from("documentos").delete().in("id", ids);
     if (dErr) throw new Error(dErr.message);
 
-    await supabase.storage.from("documentos").remove(paths);
+    await Promise.all(paths.map((p) => removerDocumento(supabase, p)));
 
     await emitEvento(supabase, EVENTOS.DOCUMENTO_REMOVIDO, "documento", ids[0], {
       descarte_definitivo: true,
