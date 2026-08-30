@@ -38,18 +38,16 @@ Fora do escopo (permanecem no Supabase): `src/lib/assinatura-storage.ts` e
   e `@aws-sdk/s3-request-presigner` funcionam em runtime Node, mas o preset de servidor
   deste template é orientado a Worker/edge, e o `client-s3` é pesado (~2 MB no bundle
   de servidor) e traz resolvedores de credencial que tocam filesystem.
-- **Recomendação:** para *presign* não é necessário SDK algum. Assinar SigV4 com Web
-  Crypto (HMAC-SHA256) é ~80 linhas, roda em qualquer runtime, não adiciona dependência
-  e elimina qualquer risco de bundling. O `HEAD` de validação e o `DELETE` são chamadas
-  `fetch` assinadas pelo mesmo helper.
+- **Decisão (ajuste aprovado):** usar **`aws4fetch`** para assinar tudo — presigned PUT,
+  presigned GET, e as chamadas HEAD/DELETE. É uma dependência única, sem sub-dependências,
+  baseada em Web Crypto e compatível com edge/Node, sem o peso do `@aws-sdk/client-s3` e
+  sem o risco de uma implementação SigV4 manual.
 - Sobre o erro `Unexpected splitNode type: TSNonNullExpression`: ele **não vem do
-  aws-sdk**. É o transform de split de server functions engasgando com o operador `!`
-  (non-null assertion) dentro de módulos `.functions.ts`. Mitigação adotada no Passo 2:
-  nenhum `!` nos `.functions.ts` novos/alterados (usar checagem explícita), e os
+  aws-sdk nem do aws4fetch**. É o transform de split de server functions engasgando com o
+  operador `!` (non-null assertion) dentro de módulos `.functions.ts`. Mitigação adotada no
+  Passo 2: nenhum `!` nos `.functions.ts` novos/alterados (usar checagem explícita), e os
   `.functions.ts` ficam como wrappers finos, com toda a lógica em `storage-r2.server.ts`.
 
-Se você preferir usar o `@aws-sdk` mesmo assim, digo agora: é viável, só exige forçar
-runtime Node na Vercel e aceitar o bundle maior.
 
 ---
 
