@@ -15,11 +15,13 @@ import {
 import { listarAnexosLinha } from "@/lib/listar-anexos.functions";
 import {
   ANEXO_ACCEPT,
+  ANEXO_TAMANHO_MAX,
   formatarBytes,
   montarCaminhoAnexo,
   validarArquivoAnexo,
   type TipoAnexoEntidade,
 } from "@/lib/anexos-linha";
+import { enviarArquivoUniversal } from "@/lib/storage-universal";
 
 /**
  * Anexos de comprovação vinculados a uma entidade da folha.
