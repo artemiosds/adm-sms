@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { zodValidator, fallback } from "@tanstack/zod-adapter";
+import { zodSearchValidator, fallback } from "@/lib/search-validator";
 
 /**
  * Filtros globais compartilhados entre os painéis executivos do módulo
@@ -21,7 +21,7 @@ export const workforceFiltersSchema = z.object({
 
 export type WorkforceFilters = z.infer<typeof workforceFiltersSchema>;
 
-export const workforceFiltersValidator = zodValidator(workforceFiltersSchema);
+export const workforceFiltersValidator = zodSearchValidator(workforceFiltersSchema);
 
 /** Chaves preservadas por retainSearchParams ao navegar entre painéis. */
 export const WORKFORCE_FILTER_KEYS = ["competencia", "unidade", "status"] as const;
