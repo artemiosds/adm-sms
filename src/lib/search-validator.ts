@@ -11,7 +11,7 @@ import { z } from "zod";
 
 /** Equivalente ao `fallback(schema, valor)` do adapter: em caso de falha, usa o valor padrão. */
 export function fallback<S extends z.ZodType>(schema: S, valor: z.input<S>): S {
-  return schema.catch(valor) as unknown as S;
+  return schema.catch(valor as z.output<S>) as unknown as S;
 }
 
 /**
