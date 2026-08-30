@@ -132,6 +132,9 @@ export async function removerArquivoUniversal(
   storagePath: string,
   bucket = "documentos",
 ): Promise<void> {
-  if (isR2(storagePath)) return; // exclusão no R2 é feita no servidor (purga)
+  if (isR2(storagePath)) {
+    await removerDocumentoStorage({ data: { storage_path: storagePath, bucket } });
+    return;
+  }
   await supabase.storage.from(bucket).remove([storagePath]);
 }
