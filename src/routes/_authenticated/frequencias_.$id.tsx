@@ -1657,11 +1657,12 @@ function AnexosDialog({
     setUploading(true);
     try {
       const path = `frequencia_profissional/${linhaId}/${crypto.randomUUID()}.${file.name.split(".").pop() ?? "bin"}`;
-      const { error: upErr } = await supabase.storage.from("documentos").upload(path, file, {
-        contentType: check.mime,
-        upsert: false,
+      const { storage_path } = await enviarArquivoUniversal({
+        file,
+        caminho: path,
+        mime: check.mime,
+        limiteBytes: ANEXO_TAMANHO_MAX,
       });
-      if (upErr) throw upErr;
       await registrarAnexoFn({
         data: {
           entidade_id: linhaId,
@@ -1669,11 +1670,12 @@ function AnexosDialog({
           unidade_id: unidadeId ?? null,
           categoria_id: categoriaId || null,
           nome: file.name,
-          storage_path: path,
+          storage_path,
           mime_type: check.mime,
           tamanho_bytes: file.size,
         },
       });
+
 
       toast.success("Anexo enviado");
       refetch();
