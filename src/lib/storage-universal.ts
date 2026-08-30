@@ -14,6 +14,7 @@
 import { supabase } from "@/integrations/supabase/client";
 import {
   confirmarUploadR2,
+  removerDocumentoStorage,
   resolverUrlDocumento,
   solicitarUploadR2,
 } from "@/lib/storage-r2.functions";
