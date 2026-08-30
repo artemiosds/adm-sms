@@ -1,85 +1,108 @@
-# Storage centralizado no Cloudflare R2 (com leitura retrocompatível)
+# Passo 1 — Análise (nenhum código alterado)
 
-Objetivo: todo upload NOVO passa a ir para o Cloudflare R2; todo arquivo ANTIGO continua
-sendo aberto normalmente do Supabase Storage, sem migração de dados e sem mudança visual
-para o usuário.
+## a) Pontos que fazem upload para o Supabase Storage (dentro do escopo)
 
-## Como fica o fluxo
+| Onde | Arquivo : linha | O que envia |
+|---|---|---|
+| Anexos de folha (linha e submissão) — usado por Efetivos, Contratados e Aprovações | `src/components/frequencias/anexos-entidade.tsx:169-172` | `supabase.storage.from("documentos").upload(path, file)` |
+| Tela de detalhe da folha (`/frequencias/$id`) | `src/routes/_authenticated/frequencias_.$id.tsx:1660` | `supabase.storage.from("documentos").upload(...)` |
+| Foto do profissional | `src/routes/_authenticated/profissionais.tsx:1482-1484` (caminho montado por `src/lib/foto-profissional.ts:40`) | upload no bucket `avatars` |
 
-Hoje o navegador envia o arquivo direto para o bucket do Supabase e o banco guarda apenas
-o caminho. As chaves do R2 são secretas e não podem ir para o navegador, então o envio
-passa a ter um passo intermediário no servidor:
+Observações importantes:
+- O **modal de envio para análise** e o **modal de anexos do painel de Aprovações**
+  (`src/components/aprovacoes/UploadAnexoModal.tsx`) **não têm upload próprio** — ambos
+  renderizam `AnexosEntidade`. Ou seja, os 4 itens do escopo passam por apenas
+  **3 pontos reais de upload**.
+- Não existe upload separado para "atestado/licença/afastamento": eles são anexos de
+  linha (`tipo_entidade = "frequencia"`), mesmo componente.
+
+## b) Pontos que geram leitura / URL de download
+
+| Onde | Arquivo : linha | O que faz |
+|---|---|---|
+| Listagem de anexos ativos | `src/lib/listar-anexos.functions.ts:69-71` | `createSignedUrl(storage_path, 300)` |
+| Listagem de anexos (linha/submissão) | `src/lib/frequencias.functions.ts:738-740` | signed URL 5 min |
+| Listagem da lixeira (removidos) | `src/lib/frequencias.functions.ts:832-834` | signed URL 5 min |
+| Exclusão definitiva de anexos | `src/lib/frequencias.functions.ts:906` | `storage.remove(paths)` |
+| Detalhe da folha: botão "Ver" e excluir | `src/routes/_authenticated/frequencias_.$id.tsx:1691` e `1705-1707` | `remove` + `createSignedUrl(60)` |
+| Foto do profissional | `src/lib/foto-profissional.ts:62` | `createSignedUrl(3600)` no bucket `avatars` |
+| Purga automática (cron) | `src/routes/api/public/hooks/purgar-documentos.ts:49-51` | `storage.remove([...])` |
+| Botão "Ver" na UI | `src/components/frequencias/anexos-entidade.tsx:246-250` e `340-344` | apenas consome a URL já assinada |
+
+Fora do escopo (permanecem no Supabase): `src/lib/assinatura-storage.ts` e
+`src/lib/pdf-pipeline.ts:514` (assinaturas institucionais).
+
+## c) Compatibilidade do SDK e risco de build
+
+- O projeto roda TanStack Start 1.168 + Vite 7, com deploy na Vercel. `@aws-sdk/client-s3`
+  e `@aws-sdk/s3-request-presigner` funcionam em runtime Node, mas o preset de servidor
+  deste template é orientado a Worker/edge, e o `client-s3` é pesado (~2 MB no bundle
+  de servidor) e traz resolvedores de credencial que tocam filesystem.
+- **Recomendação:** para *presign* não é necessário SDK algum. Assinar SigV4 com Web
+  Crypto (HMAC-SHA256) é ~80 linhas, roda em qualquer runtime, não adiciona dependência
+  e elimina qualquer risco de bundling. O `HEAD` de validação e o `DELETE` são chamadas
+  `fetch` assinadas pelo mesmo helper.
+- Sobre o erro `Unexpected splitNode type: TSNonNullExpression`: ele **não vem do
+  aws-sdk**. É o transform de split de server functions engasgando com o operador `!`
+  (non-null assertion) dentro de módulos `.functions.ts`. Mitigação adotada no Passo 2:
+  nenhum `!` nos `.functions.ts` novos/alterados (usar checagem explícita), e os
+  `.functions.ts` ficam como wrappers finos, com toda a lógica em `storage-r2.server.ts`.
+
+Se você preferir usar o `@aws-sdk` mesmo assim, digo agora: é viável, só exige forçar
+runtime Node na Vercel e aceitar o bundle maior.
+
+---
+
+# Passo 2 — Arquitetura (só depois da sua confirmação)
+
+## Fluxo
 
 ```text
-Botão "Anexar"  ->  server function pede URL de upload assinada ao R2
-                ->  navegador envia o arquivo direto para o R2 (barra de progresso igual)
-                ->  server function grava metadados no banco (prefixo r2:)
+Anexar  ->  solicitarUploadR2 (server, autenticado) devolve { url presigned PUT, key }
+        ->  navegador faz PUT direto na URL (mesma barra de progresso)
+        ->  confirmarUploadR2 faz HEAD, valida tamanho real; se exceder, apaga e falha
+        ->  registrarAnexoLinha grava metadados com storage_path = "r2:..."
+Ver     ->  obterUrlVisualizacao decide: prefixo "r2:" -> presigned GET 5 min
+                                         demais       -> Supabase, como hoje
 ```
 
-Na leitura, um único helper decide a origem:
-- caminho salvo começa com `r2:` (ou é URL do domínio público R2) -> resolve no R2
-- qualquer outro caminho / URL `supabase.co/storage` -> resolve no Supabase (comportamento atual)
+## Arquivos
 
-## Variáveis a cadastrar (secrets do projeto)
+- `src/lib/storage-r2.server.ts` (server-only): assinador SigV4, `criarUrlUpload`,
+  `criarUrlLeitura` (GET 5 min, sempre assinada), `validarObjeto` (HEAD + limite),
+  `removerArquivo`. Endpoint `https://<R2_ACCOUNT_ID>.r2.cloudflarestorage.com`,
+  região `auto`. Nenhuma URL pública referenciada.
+- `src/lib/storage-r2.functions.ts` (wrapper fino, `requireSupabaseAuth`):
+  `solicitarUploadR2`, `confirmarUploadR2`, `resolverUrlDocumento`.
+- `src/lib/storage-universal.ts` (client-safe): `isR2`, `isLegadoSupabase`,
+  `obterUrlVisualizacao`, reaproveitando as validações de `anexos-linha.ts`
+  (PDF/JPG/PNG/WEBP, 10 MB) e `foto-profissional.ts` (imagens, 5 MB).
 
-- `R2_ACCOUNT_ID`
-- `R2_ACCESS_KEY_ID`
-- `R2_SECRET_ACCESS_KEY`
-- `R2_BUCKET_NAME`
-- `R2_PUBLIC_URL` (opcional — se vazio, o sistema usa sempre URL assinada de 5 min)
+Chave: `r2:{secretaria}/{unidade}/{pasta}/{entidade}/{uuid}.{ext}` — mesmo
+particionamento de hoje, só com prefixo. Coluna `storage_path` inalterada.
 
-Todas server-only. Nenhuma delas é exposta ao frontend.
+## Feature flag
 
-## Escopo dos uploads migrados
+`STORAGE_PROVIDER` (`r2` | `supabase`, default `r2`), lida no servidor. Se o presign
+falhar (credencial inválida, bucket inacessível), o cliente cai automaticamente no
+fluxo Supabase atual, registra o erro no log e o usuário não percebe falha.
 
-1. Tramitação de folha — modal de envio para análise (Efetivos e Contratados), anexos de submissão.
-2. Ocorrências / frequência individual — atestados, licenças, afastamentos e justificativas por servidor.
-3. Painel de aprovações — modal de anexo e visualização dos documentos da validação.
-4. Cadastros / perfis — foto do profissional e documentos comprobatórios.
+## Alterações
 
-Assinaturas institucionais e PDFs gerados internamente ficam de fora nesta etapa (podem
-entrar depois, sem mudança de arquitetura).
+- `src/components/frequencias/anexos-entidade.tsx` — upload via presigned (cobre folha
+  de Efetivos, Contratados, envio para análise e painel de Aprovações)
+- `src/routes/_authenticated/frequencias_.$id.tsx` — mesmo fluxo no upload/ver/excluir
+- `src/routes/_authenticated/profissionais.tsx` + `src/lib/foto-profissional.ts` — foto
+  no R2; `useFotoAssinada` passa a usar `obterUrlVisualizacao`
+- `src/lib/listar-anexos.functions.ts` e `src/lib/frequencias.functions.ts` — URLs e
+  remoção decididas pelo prefixo
+- `src/lib/anexos-linha.ts` — `montarCaminhoAnexo` com prefixo `r2:`
+- `src/routes/api/public/hooks/purgar-documentos.ts` — purga no destino correto
 
-## Detalhes técnicos
+Cada arquivo alterado é reescrito por inteiro, sem merge parcial.
 
-**Dependência:** `@aws-sdk/client-s3` + `@aws-sdk/s3-request-presigner` (compatíveis com o
-runtime de servidor usado no projeto).
+## Validação final
 
-**`src/lib/storage-r2.server.ts`** (server-only, nunca importado por componente):
-- cliente S3 criado dentro dos handlers, endpoint `https://<account>.r2.cloudflarestorage.com`, região `auto`
-- `uploadArquivo(bytes, folder, customFileName?)` — envio direto do servidor (uso interno/PDFs)
-- `criarUrlUpload(folder, fileName, mime)` — presigned PUT para envio pelo navegador
-- `criarUrlLeitura(key)` — presigned GET (5 min) ou URL pública quando `R2_PUBLIC_URL` existir
-- `removerArquivo(key)`
-
-**`src/lib/storage-r2.functions.ts`** (server functions autenticadas, `requireSupabaseAuth`):
-- `solicitarUploadR2` — valida MIME/tamanho e devolve `{ url, key }`
-- `resolverUrlDocumento` — recebe caminho salvo e devolve URL final
-
-**`src/lib/storage-universal.ts`** (client-safe):
-- `obterUrlVisualizacao(urlOuPath)` — decide Supabase (signed URL atual) x R2 (chama a server fn)
-- `isR2(path)` / `isLegadoSupabase(path)`
-- reaproveita as validações já existentes em `anexos-linha.ts` (PDF/JPG/PNG/WEBP, 10 MB) e
-  `foto-profissional.ts` (5 MB, imagens)
-
-**Convenção de chave no banco:** `r2:{secretaria}/{unidade}/{pasta}/{entidade}/{uuid}.{ext}`,
-mantendo o mesmo particionamento hoje usado no bucket `documentos`. A coluna `storage_path`
-não muda de tipo; só passa a aceitar o prefixo.
-
-**Pontos de código alterados:**
-- `src/components/frequencias/anexos-entidade.tsx` — troca o `supabase.storage.upload` pelo fluxo presigned; `registrarAnexoLinha` continua gravando os metadados
-- `src/lib/frequencias.functions.ts` (`listarAnexosLinha`, removidos, exclusão) e `src/lib/listar-anexos.functions.ts` — geração de URL passa pelo helper universal
-- `src/components/aprovacoes/UploadAnexoModal.tsx` — mesmo fluxo de upload
-- `src/lib/foto-profissional.ts` — upload da foto no R2; `useFotoAssinada` passa a usar `obterUrlVisualizacao` (mantém suporte a `http(s)://` e a caminhos antigos do bucket `avatars`)
-- `src/lib/anexos-linha.ts` — `montarCaminhoAnexo` ganha o prefixo `r2:`
-- rota de purga (`api/public/hooks/purgar-documentos.ts`) — apaga no R2 ou no Supabase conforme o prefixo
-
-**Sem migração de dados.** Nenhum arquivo antigo é movido; os registros existentes seguem
-apontando para o Supabase e continuam abrindo.
-
-## Validação
-
-- Anexar documento em folha de Efetivos e Contratados, conferir que abre pelo botão "Ver"
-- Abrir um anexo antigo (pré-mudança) e confirmar que continua abrindo
-- Anexo pelo painel de Aprovações e foto de profissional
-- Lixeira/restauração e purga continuam funcionando nos dois tipos de caminho
+Anexo novo em Efetivos e Contratados abre pelo "Ver"; anexo antigo continua abrindo;
+anexo pelo painel de Aprovações e foto de profissional funcionam; lixeira, restauração
+e purga funcionam nos dois tipos de caminho; nenhuma chave R2 no bundle do navegador.
