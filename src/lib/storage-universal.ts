@@ -92,7 +92,7 @@ export async function enviarArquivoUniversal(params: {
     destino = await solicitarUploadR2({
       data: {
         caminho: params.caminho,
-        mime: params.mime as "application/pdf",
+        mime: params.mime,
         tamanho: params.file.size,
         limite_bytes: params.limiteBytes,
       },
