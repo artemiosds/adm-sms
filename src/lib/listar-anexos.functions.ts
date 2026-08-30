@@ -74,7 +74,7 @@ async function formatarAnexos(rows: any[], supabase: any) {
           tamanho_bytes: Number(d.tamanho_bytes ?? 0),
           created_at: d.created_at as string,
           enviado_por: autores.get(d.created_by) ?? null,
-          url: signed?.signedUrl ?? null,
+          url,
         };
       }),
     );
