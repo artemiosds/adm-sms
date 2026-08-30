@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { createClient } from "@supabase/supabase-js";
 import { autorizarCron } from "@/lib/cron-auth.server";
+import { removerDocumento } from "@/lib/storage-r2.server";
 
 /**
  * Purga definitiva de anexos na lixeira.
