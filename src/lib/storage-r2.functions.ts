@@ -5,6 +5,7 @@ import {
   R2_PREFIXO,
   assinarUrlDocumento,
   criarUrlUpload,
+  removerDocumento,
   r2Disponivel,
   validarObjeto,
 } from "./storage-r2.server";
