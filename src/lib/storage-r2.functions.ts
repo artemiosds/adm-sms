@@ -25,7 +25,9 @@ const SolicitarSchema = z.object({
  */
 export const solicitarUploadR2 = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .validator((d: z.infer<typeof SolicitarSchema>) => SolicitarSchema.parse(d))
+  .validator((d: { caminho: string; mime: string; tamanho: number; limite_bytes: number }) =>
+    SolicitarSchema.parse(d),
+  )
   .handler(async ({ data }) => {
     if (data.tamanho > data.limite_bytes) {
       throw new Error("Arquivo maior que o limite permitido.");
