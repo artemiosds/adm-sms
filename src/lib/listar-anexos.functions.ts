@@ -66,9 +66,7 @@ async function formatarAnexos(rows: any[], supabase: any) {
 
     const assinadas = await Promise.all(
       rows.map(async (d: any) => {
-        const { data: signed } = await supabase.storage
-          .from("documentos")
-          .createSignedUrl(d.storage_path, 300);
+        const url = await assinarUrlDocumento(supabase, d.storage_path);
         return {
           id: d.id as string,
           nome: d.nome as string,
