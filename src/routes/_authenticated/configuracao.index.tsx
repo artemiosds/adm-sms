@@ -526,6 +526,10 @@ function ConfiguracaoPage() {
 
       {userCtx?.is_master && <SmtpConfigSection />}
 
+      {userCtx?.is_master && <R2DiagnosticoSection />}
+
+
+
 
       {userCtx?.is_master && (
         <section className="space-y-4 rounded-lg border bg-card p-6">
