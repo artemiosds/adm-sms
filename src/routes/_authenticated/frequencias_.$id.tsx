@@ -17,11 +17,8 @@ import {
   registrarAnexoLinha,
 } from "@/lib/frequencias.functions";
 import { ANEXO_TAMANHO_MAX, validarArquivoAnexo } from "@/lib/anexos-linha";
-import {
-  enviarArquivoUniversal,
-  obterUrlVisualizacao,
-  removerArquivoUniversal,
-} from "@/lib/storage-universal";
+import { enviarArquivoUniversal, obterUrlVisualizacao } from "@/lib/storage-universal";
+
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
