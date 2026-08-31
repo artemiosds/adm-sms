@@ -34,7 +34,7 @@ export async function auditarAnexosSubmissoes(): Promise<ResultadoAuditoriaAnexo
     .from("documentos")
     .select("id, nome, tipo_entidade, entidade_id, storage_path, created_at, created_by")
     .is("deleted_at", null)
-    .in("tipo_entidade", TIPOS as unknown as string[])
+    .in("tipo_entidade", [...TIPOS])
     .like("storage_path", "r2:%")
     .order("created_at", { ascending: false })
     .limit(2000);
