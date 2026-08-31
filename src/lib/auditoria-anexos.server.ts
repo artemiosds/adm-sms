@@ -76,11 +76,19 @@ export async function auditarAnexosSubmissoes(): Promise<ResultadoAuditoriaAnexo
     for (const a of ausentes) a.autor = a.created_by ? (mapa.get(a.created_by) ?? null) : null;
   }
 
+  const { data: perfilMaster } = await supabaseAdmin
+    .from("perfis")
+    .select("id")
+    .eq("codigo", "MASTER")
+    .maybeSingle();
+
   const { data: masters } = await supabaseAdmin
     .from("usuarios")
-    .select("id, nome_completo, email, is_master, status")
-    .eq("is_master", true)
-    .eq("status", "ativo");
+    .select("id, nome_completo, email")
+    .eq("perfil_id", (perfilMaster as { id: string } | null)?.id ?? "")
+    .eq("status", "ativo")
+    .is("deleted_at", null);
+
 
   const destinatarios = (masters ?? []) as Array<{
     id: string;
