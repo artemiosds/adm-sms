@@ -245,15 +245,28 @@ export async function assinarUrlDocumento(
   return data?.signedUrl ?? null;
 }
 
-/** Apaga o binário no destino correto conforme o prefixo do caminho salvo. */
+/**
+ * Remoção de binário do destino legado.
+ *
+ * Para caminhos `r2:` a exclusão é PROIBIDA (bucket com retenção indefinida):
+ * a função apenas registra em log e devolve `retencao`, sem tocar no objeto.
+ */
 export async function removerDocumento(
   supabase: SupabaseLike,
   storagePath: string,
   bucket = "documentos",
-): Promise<void> {
+): Promise<ResultadoRemocao> {
   if (isCaminhoR2(storagePath)) {
-    await removerArquivo(storagePath);
-    return;
+    console.warn("[storage-r2] exclusão ignorada (retenção indefinida):", {
+      key: chaveR2(storagePath),
+    });
+    return { ok: false, motivo: "retencao" };
   }
-  await supabase.storage.from(bucket).remove([storagePath]);
+  const { error } = await supabase.storage.from(bucket).remove([storagePath]);
+  if (error) {
+    console.error("[storage] falha ao excluir no Supabase Storage:", error.message);
+    return { ok: false, motivo: "erro", detalhe: error.message };
+  }
+  return { ok: true, motivo: "removido" };
 }
+
