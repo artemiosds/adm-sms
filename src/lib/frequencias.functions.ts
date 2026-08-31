@@ -8,7 +8,7 @@ import { logger } from "./logger";
 import { TIPOS_ANEXO_FOLHA, calcularPurgaApos } from "./frequencias-retencao";
 import { sendEmail, generateEmailTemplate } from "./email.server";
 import { obterAssinaturaInstitucionalAtual } from "./pdf-pipeline";
-import { assinarUrlDocumento, removerDocumento } from "./storage-r2.server";
+import { assinarUrlDocumento } from "./storage-r2.server";
 
 
 
