@@ -103,7 +103,20 @@ export async function enviarEmailsAviso(
   let falhas = 0;
   let motivo: string | null = null;
 
+  // Idempotência opcional: pula quem já recebeu este assunto com sucesso desde a data informada
+  const jaRecebeu = new Set<string>();
+  if (opts?.pularEnviadosDesde) {
+    const { data: logs } = await supabaseAdmin
+      .from("logs_notificacoes")
+      .select("destinatario")
+      .eq("assunto", assunto)
+      .eq("status", "enviado")
+      .gte("data_envio", opts.pularEnviadosDesde);
+    for (const l of logs ?? []) jaRecebeu.add(((l.destinatario as string) ?? "").toLowerCase());
+  }
+
   for (const u of destinatarios) {
+    if (jaRecebeu.has(u.email.toLowerCase())) continue;
     const res = await sendEmail({ to: u.email, subject: assunto, html });
     if (res.success) {
       enviados += 1;
