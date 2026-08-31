@@ -895,12 +895,27 @@ export const descartarAnexosPendentes = createServerFn({ method: "POST" })
     if (!alvos.length) return { ok: true, descartados: 0 };
 
     const ids = alvos.map((d: Record<string, unknown>) => d.id as string);
-    const paths = alvos.map((d: Record<string, unknown>) => d.storage_path as string);
 
-    const { error: dErr } = await supabase.from("documentos").delete().in("id", ids);
+    // O binário só pode ser apagado se a linha REALMENTE saiu do banco.
+    // Sem `.select()` a RLS pode bloquear o DELETE (0 linhas, sem erro) e o
+    // arquivo seria removido do R2 deixando o registro órfão -> NoSuchKey.
+    const { data: apagados, error: dErr } = await supabase
+      .from("documentos")
+      .delete()
+      .in("id", ids)
+      .select("id, storage_path");
     if (dErr) throw new Error(dErr.message);
 
-    await Promise.all(paths.map((p) => removerDocumento(supabase, p)));
+    const removidos = (apagados ?? []) as { id: string; storage_path: string }[];
+    if (!removidos.length) {
+      throw new Error(
+        "Não foi possível descartar os anexos: sem permissão para excluir os registros. Nenhum arquivo foi apagado.",
+      );
+    }
+
+    await Promise.all(
+      removidos.filter((d) => d.storage_path).map((d) => removerDocumento(supabase, d.storage_path)),
+    );
 
     await emitEvento(supabase, EVENTOS.DOCUMENTO_REMOVIDO, "documento", ids[0], {
       descarte_definitivo: true,
