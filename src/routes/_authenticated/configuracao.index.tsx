@@ -13,6 +13,7 @@ import { Save, Settings2, Upload } from "lucide-react";
 import { usePermissions, useCurrentUser } from "@/hooks/use-permissions";
 import { HsmConfigSection } from "@/components/hsm-expert/hsm-config-section";
 import { SmtpConfigSection } from "@/components/configuracoes/smtp-config-section";
+import { R2DiagnosticoSection } from "@/components/configuracoes/r2-diagnostico-section";
 
 
 export const Route = createFileRoute("/_authenticated/configuracao/")({ errorComponent: ErrorComponent,
