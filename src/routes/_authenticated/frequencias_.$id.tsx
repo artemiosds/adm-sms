@@ -1695,18 +1695,19 @@ function AnexosDialog({
 
   const removerAnexo = async (doc: DocRow) => {
     try {
-      await removerArquivoUniversal(doc.storage_path);
+      // Soft-delete apenas: o binário é retido indefinidamente no R2.
       const { error } = await supabase
         .from("documentos")
         .update({ deleted_at: new Date().toISOString(), deleted_by: userId })
         .eq("id", doc.id);
       if (error) throw error;
-      toast.success("Anexo removido");
+      toast.success("Anexo removido da lista (arquivo mantido no arquivo permanente)");
       refetch();
     } catch (e) {
       toast.error((e as Error).message);
     }
   };
+
 
   const baixar = async (doc: DocRow) => {
     const url = await obterUrlVisualizacao(doc.storage_path, { expiraEm: 60 });
