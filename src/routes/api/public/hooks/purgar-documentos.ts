@@ -43,24 +43,25 @@ export const Route = createFileRoute("/api/public/hooks/purgar-documentos")({
 
         type Doc = { id: string; storage_path: string; metadata: Record<string, unknown> | null };
         const alvos = ((vencidos ?? []) as Doc[]).filter(
-          (d) => d.storage_path && !(d.metadata ?? {}).purgado_em,
+          (d) => d.storage_path && !(d.metadata ?? {}).retido_r2,
         );
-        if (!alvos.length) return Response.json({ ok: true, purgados: 0 });
+        if (!alvos.length) return Response.json({ ok: true, retidos: 0, purgados: 0 });
 
-        // Remove no destino correto: R2 (prefixo `r2:`) ou Supabase Storage (legado).
-        try {
-          await Promise.all(alvos.map((d) => removerDocumento(supa, d.storage_path)));
-        } catch (e) {
-          return Response.json({ error: (e as Error).message }, { status: 500 });
-        }
-
+        // Nenhuma exclusão física: o binário é retido indefinidamente no R2.
         for (const d of alvos) {
           await supa
             .from("documentos")
-            .update({ metadata: { ...(d.metadata ?? {}), purgado_em: agora } })
+            .update({
+              metadata: {
+                ...(d.metadata ?? {}),
+                retido_r2: true,
+                retencao_verificada_em: agora,
+              },
+            })
             .eq("id", d.id);
         }
-        return Response.json({ ok: true, purgados: alvos.length });
+        return Response.json({ ok: true, retidos: alvos.length, purgados: 0 });
+
       },
     },
   },
