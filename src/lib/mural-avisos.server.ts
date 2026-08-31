@@ -15,7 +15,10 @@ type Alvo = { id: string; email: string; nome: string };
  * Envia (ou reenvia) por e-mail um aviso do mural, usando as credenciais SMTP
  * de public.configuracoes_sistema (com fallback para variáveis de ambiente).
  */
-export async function enviarEmailsAviso(avisoId: string): Promise<ResultadoEmailAviso> {
+export async function enviarEmailsAviso(
+  avisoId: string,
+  opts?: { pularEnviadosDesde?: string },
+): Promise<ResultadoEmailAviso> {
   const vazio: ResultadoEmailAviso = { destinatarios: 0, enviados: 0, falhas: 0, motivo: null };
 
   const { data: aviso, error: aErr } = await supabaseAdmin
