@@ -2,7 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { ACOES, ensurePermission } from "./authz.server";
-import { assinarUrlDocumento } from "./storage-r2.server";
+import { assinarUrlDocumento, isCaminhoR2, objetoExisteR2 } from "./storage-r2.server";
 
 const ListarAnexosSchema = z.object({
   entidade_id: z.string().uuid(),
