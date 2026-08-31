@@ -1,19 +1,19 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { createClient } from "@supabase/supabase-js";
 import { autorizarCron } from "@/lib/cron-auth.server";
-import { removerDocumento } from "@/lib/storage-r2.server";
 
 /**
- * Purga definitiva de anexos na lixeira.
+ * Rotina de retenção de anexos na lixeira.
  *
- * Remove o binário do Storage APENAS de documentos com `deleted_at` preenchido
- * e `purga_apos` já vencido (5 anos para anexos de folha/frequência, 2 anos
- * para os demais). O registro de metadados permanece no banco como rastro de
- * auditoria, marcado em `metadata.purgado_em`.
+ * O bucket R2 opera com bloqueio indefinido: NENHUM binário é apagado por esta
+ * rotina. Documentos com `deleted_at` e `purga_apos` vencido são apenas
+ * marcados com `metadata.retido_r2` e `metadata.retencao_verificada_em`,
+ * mantendo o arquivo disponível para consulta permanente e o rastro no banco.
  *
  * Chamada por pg_cron. Exige `x-cron-secret`; sem `DEADLINE_CRON_SECRET`
  * configurado a rota devolve 503 (fail-closed).
  */
+
 export const Route = createFileRoute("/api/public/hooks/purgar-documentos")({
   server: {
     handlers: {
