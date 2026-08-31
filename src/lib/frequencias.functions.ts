@@ -917,10 +917,10 @@ export const descartarAnexosPendentes = createServerFn({ method: "POST" })
       removidos.filter((d) => d.storage_path).map((d) => removerDocumento(supabase, d.storage_path)),
     );
 
-    await emitEvento(supabase, EVENTOS.DOCUMENTO_REMOVIDO, "documento", ids[0], {
+    await emitEvento(supabase, EVENTOS.DOCUMENTO_REMOVIDO, "documento", removidos[0].id, {
       descarte_definitivo: true,
       motivo: "envio_cancelado",
-      quantidade: ids.length,
+      quantidade: removidos.length,
     });
-    return { ok: true, descartados: ids.length };
+    return { ok: true, descartados: removidos.length };
   });
