@@ -133,8 +133,7 @@ export async function objetoExisteR2(key: string): Promise<boolean> {
   if (!cfg) return true;
   try {
     const res = await cliente(cfg).fetch(urlObjeto(cfg, chaveR2(key)), { method: "HEAD" });
-    if (res.status === 404 || res.status === 403) return false;
-    return true;
+    return res.status !== 404;
   } catch {
     return true;
   }
