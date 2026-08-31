@@ -46,18 +46,21 @@ const ORDER: {
 ];
 
 function SituacaoFuncional() {
-  const { unidadePadraoId, isMaster } = useUnitScope();
-  const a = useAnalytics({ unidadeId: unidadePadraoId });
+  const { unidadePadraoId, selectedUnitId, isMaster, isGlobal } = useUnitScope();
+  // Master/perfis globais: sem unidade escolhida explicitamente = visão global (rede inteira).
+  const escopoUnidadeId = isGlobal || isMaster ? selectedUnitId : unidadePadraoId;
+  const a = useAnalytics({ unidadeId: escopoUnidadeId });
   const { data: professionals, isLoading: isLoadingDirect } = useQuery({
-    queryKey: ["profissionais-status-direct", unidadePadraoId, isMaster],
+    queryKey: ["profissionais-status-direct", escopoUnidadeId, isMaster],
     queryFn: async () => {
       let q = supabase
         .from("profissionais")
         .select("status, unidade_id")
-        .is("deleted_at", null);
-      
-      if (unidadePadraoId) {
-        q = q.eq("unidade_id", unidadePadraoId);
+        .is("deleted_at", null)
+        .limit(10000);
+
+      if (escopoUnidadeId) {
+        q = q.eq("unidade_id", escopoUnidadeId);
       }
       
       const { data, error } = await q;
