@@ -193,7 +193,7 @@ export const salvarFolhaContratados = createServerFn({ method: "POST" })
     const profIds = data.linhas.map((l) => l.profissional_id);
     const { data: existentes, error: exErr } = await supabase
       .from("frequencias_contratados")
-      .select("id, profissional_id, status, updated_at")
+      .select("id, profissional_id, status, updated_at, created_by, aprovada_em, aprovada_por")
       .eq("competencia_id", data.competencia_id)
       .eq("unidade_id", data.unidade_id)
       .in("profissional_id", profIds)

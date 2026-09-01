@@ -290,7 +290,7 @@ export const salvarFolhaEfetivos = createServerFn({ method: "POST" })
     const profIds = data.linhas.map((l) => l.profissional_id);
     const { data: existentes, error: exErr } = await supabase
       .from("frequencia_profissional")
-      .select("id, profissional_id, status_linha, updated_at")
+      .select("id, profissional_id, status_linha, updated_at, created_by, aprovada_em, aprovada_por")
       .eq("frequencia_id", frequencia_id)
       .in("profissional_id", profIds)
       .is("deleted_at", null);
