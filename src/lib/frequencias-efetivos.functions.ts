@@ -356,9 +356,14 @@ export const salvarFolhaEfetivos = createServerFn({ method: "POST" })
 
       if (!ex) {
         payload.created_by = userId;
+        // Novas linhas recebem UUID explícito: no upsert em lote o PostgREST usa
+        // o mesmo conjunto de colunas para todas as linhas, então uma linha sem `id`
+        // seria enviada como NULL (erro 23502) em vez de usar o default do banco.
+        payload.id = crypto.randomUUID();
       } else {
         payload.id = ex.id;
       }
+
 
       const inativo = naoAtivos.has(l.profissional_id);
       for (const f of PAYLOAD_FIELDS) {

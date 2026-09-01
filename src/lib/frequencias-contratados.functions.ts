@@ -259,9 +259,13 @@ export const salvarFolhaContratados = createServerFn({ method: "POST" })
 
       if (!ex) {
         payload.created_by = userId;
+        // Ver comentário em frequencias-efetivos: upsert em lote exige `id` em todas
+        // as linhas, senão o PostgREST envia NULL e o banco rejeita (23502).
+        payload.id = crypto.randomUUID();
       } else {
         payload.id = ex.id;
       }
+
 
       const inativo = naoAtivos.has(l.profissional_id);
       for (const f of PAYLOAD_FIELDS) {
