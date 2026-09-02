@@ -106,27 +106,65 @@ export function desenharImagemProporcional(
 
 
 /**
- * Converte qualquer imagem (Data URL) para PNG com fundo branco se houver transparência.
- * Isso evita o "fundo preto" em imagens com canal alpha no jsPDF.
+ * Normaliza uma imagem de carimbo/assinatura (Data URL) para PNG.
+ *
+ * - modo "transparente" (padrão): preserva o canal alfa e transforma os pixels
+ *   quase brancos do fundo digitalizado em transparentes, de modo que o carimbo
+ *   se misture ao fundo da folha (linhas, tabelas, faixas) sem caixa branca.
+ * - modo "branco": achata a imagem contra um fundo branco (comportamento legado,
+ *   usado como fallback).
  */
-export async function removerFundoTransparente(dataUri: string): Promise<string> {
+export async function removerFundoTransparente(
+  dataUri: string,
+  modo: "transparente" | "branco" = "transparente",
+  tolerancia = 238,
+): Promise<string> {
   return new Promise((resolve) => {
     const img = new Image();
     img.onload = () => {
-      const canvas = document.createElement("canvas");
-      canvas.width = img.width;
-      canvas.height = img.height;
-      const ctx = canvas.getContext("2d");
-      if (!ctx) {
+      try {
+        const canvas = document.createElement("canvas");
+        canvas.width = img.width;
+        canvas.height = img.height;
+        const ctx = canvas.getContext("2d", { willReadFrequently: true });
+        if (!ctx) {
+          resolve(dataUri);
+          return;
+        }
+
+        if (modo === "branco") {
+          ctx.fillStyle = "#FFFFFF";
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+          ctx.drawImage(img, 0, 0);
+          resolve(canvas.toDataURL("image/png"));
+          return;
+        }
+
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(img, 0, 0);
+
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const px = imageData.data;
+        for (let i = 0; i < px.length; i += 4) {
+          const a = px[i + 3];
+          if (a === 0) continue;
+          const r = px[i];
+          const g = px[i + 1];
+          const b = px[i + 2];
+          if (r >= tolerancia && g >= tolerancia && b >= tolerancia) {
+            px[i + 3] = 0;
+          } else {
+            // Suaviza a borda: quanto mais claro o pixel, mais translúcido
+            const luminancia = (r * 0.299 + g * 0.587 + b * 0.114) / 255;
+            if (luminancia > 0.82) px[i + 3] = Math.round(a * (1 - (luminancia - 0.82) / 0.18));
+          }
+        }
+        ctx.putImageData(imageData, 0, 0);
+        resolve(canvas.toDataURL("image/png"));
+      } catch {
+        // Fallback seguro: nunca quebra a emissão do documento
         resolve(dataUri);
-        return;
       }
-      // Fundo branco
-      ctx.fillStyle = "#FFFFFF";
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-      // Desenha a imagem por cima
-      ctx.drawImage(img, 0, 0);
-      resolve(canvas.toDataURL("image/png"));
     };
     img.onerror = () => resolve(dataUri);
     img.src = dataUri;
