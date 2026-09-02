@@ -24,7 +24,12 @@ const REF_H = 560;
 const BASE_W = 75;
 const BASE_H = 30;
 
-export type EscopoAssinatura = { unidadeId?: string | null; secretariaId?: string | null };
+export type EscopoAssinatura = {
+  unidadeId?: string | null;
+  secretariaId?: string | null;
+  /** quando informado, prioriza a assinatura desse perfil (quem está assinando) */
+  perfilCodigo?: string | null;
+};
 
 /**
  * FASE 1 — Função central: devolve a assinatura institucional ATIVA aplicável,
@@ -57,9 +62,13 @@ export async function obterAssinaturaInstitucionalAtual(
   );
   if (candidatas.length === 0) return null;
 
-  // Ordena por escopo (Unidade > Secretaria > Global)
+  // Ordena por perfil solicitado (quem assina) e depois por escopo (Unidade > Secretaria > Global)
+  const perfilAlvo = escopo.perfilCodigo ?? null;
   candidatas.sort(
-    (a, b) => (prioridade[a.escopo] ?? 9) - (prioridade[b.escopo] ?? 9) || a.ordem - b.ordem,
+    (a, b) =>
+      (perfilAlvo ? (a.perfil_codigo === perfilAlvo ? 0 : 1) - (b.perfil_codigo === perfilAlvo ? 0 : 1) : 0) ||
+      (prioridade[a.escopo] ?? 9) - (prioridade[b.escopo] ?? 9) ||
+      a.ordem - b.ordem,
   );
 
   const selecionada = candidatas[0];
