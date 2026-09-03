@@ -20,14 +20,13 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toast, Toaster } from "sonner";
-import { Save, Send, Search, FileSpreadsheet, FileDown } from "lucide-react";
+import { Save, Send, Search, FileSpreadsheet, FileDown, AlertTriangle } from "lucide-react";
 import type { UnidadeFolha } from "@/lib/pdf-folha-efetivos-oficial";
 import { useCurrentUser, usePermissions } from "@/hooks/use-permissions";
 import { useUnitScope } from "@/hooks/use-unit-scope";
 
 import { useCompetenciaAtiva } from "@/hooks/use-competencia-ativa";
 import { bloqueadoPorPrazo, MSG_PRAZO_ENCERRADO } from "@/lib/prazo-envio";
-import { AlertTriangle } from "lucide-react";
 import type { Database } from "@/integrations/supabase/types";
 import { useConferenciaProfissionais, mergeConferencia } from "@/hooks/use-conferencia";
 import {
