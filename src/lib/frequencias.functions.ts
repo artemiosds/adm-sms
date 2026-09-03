@@ -9,7 +9,7 @@ import { TIPOS_ANEXO_FOLHA, calcularPurgaApos } from "./frequencias-retencao";
 import { sendEmail, generateEmailTemplate } from "./email.server";
 import { obterAssinaturaInstitucionalAtual } from "./pdf-pipeline";
 import { assinarUrlDocumento } from "./storage-r2.server";
-import { assertPrazoEnvio, assertPrazoEnvioPorFrequencia } from "./prazo-envio";
+import { assertPrazoEnvioPorFrequencia } from "./prazo-envio";
 
 
 
