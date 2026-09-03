@@ -37,6 +37,7 @@ import {
   Ban,
   ArrowRightLeft,
   Filter as FilterIcon,
+  AlertTriangle,
 } from "lucide-react";
 import { useCurrentUser, usePermissions } from "@/hooks/use-permissions";
 import { useUnitScope } from "@/hooks/use-unit-scope";
