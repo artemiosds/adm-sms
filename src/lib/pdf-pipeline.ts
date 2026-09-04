@@ -619,7 +619,7 @@ export async function finalizarPdf(doc: jsPDF, opts: FinalizarPdfOpts): Promise<
     if (!item.incluir) continue;
     const a = porId.get(item.assinaturaId);
     if (!a) continue;
-    desenharAssinaturaEm(doc, a, {
+    desenhar(a, {
       xMm: item.xMm,
       yMm: item.yMm,
       pagina: item.pagina,
