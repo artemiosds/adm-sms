@@ -547,10 +547,27 @@ export async function finalizarPdf(doc: jsPDF, opts: FinalizarPdfOpts): Promise<
 
   const porId = new Map(itens.map((i) => [i.id, i.assinatura]));
 
+  const repetir = opts.repetirEmTodasPaginas !== false;
+
+  const desenhar = (
+    a: AssinaturaResolvida,
+    pos: { xMm: number; yMm: number; pagina?: number; tamanhoPercentual?: number },
+  ) => {
+    if (repetir) {
+      desenharAssinaturaEmTodasPaginas(doc, a, {
+        xMm: pos.xMm,
+        yMm: pos.yMm,
+        tamanhoPercentual: pos.tamanhoPercentual,
+      });
+    } else {
+      desenharAssinaturaEm(doc, a, pos);
+    }
+  };
+
   const desenharPadroes = () => {
     for (const i of itens) {
       if (!i.incluirPadrao) continue;
-      desenharAssinaturaEm(doc, i.assinatura, {
+      desenhar(i.assinatura, {
         xMm: i.xPadraoMm,
         yMm: i.yPadraoMm,
         pagina: i.paginaPadrao,
