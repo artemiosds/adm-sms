@@ -385,7 +385,8 @@ export async function gerarFolhaContratadosOficial(input: PdfContratadosInput): 
     body,
     startY: 44,
     tableWidth: "auto",
-    margin: { left: 10, right: 10, top: 44, bottom: 15 },
+    // bottom reservado (45mm) = zona limpa para as assinaturas em todas as páginas
+    margin: { left: 10, right: 10, top: 44, bottom: 45 },
     rowPageBreak: "avoid",
     styles: {
       fontSize: 7,
