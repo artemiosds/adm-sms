@@ -312,18 +312,12 @@ export const salvarFolhaEfetivos = createServerFn({ method: "POST" })
     
     const isMasterFinal = isMaster || isMasterRPC === true || isGestor;
 
-    if (!isMasterFinal) {
-      // 1. Bloqueio por status da folha (Bypass Protection)
-      if (
-        frequencia_status !== "rascunho" &&
-        frequencia_status !== "com_pendencias" &&
-        frequencia_status !== "rejeitada" &&
-        frequencia_status !== "devolvida"
+    const folhaAberta =
+      frequencia_status === "rascunho" ||
+      frequencia_status === "com_pendencias" ||
+      frequencia_status === "rejeitada" ||
+      frequencia_status === "devolvida";
 
-      ) {
-        throw new Error("Folha já enviada ou aprovada — não é possível editar sem perfil Master ou Gestor.");
-      }
-    }
 
     const profIds = data.linhas.map((l) => l.profissional_id);
     // Sem filtro de setor, a linha do profissional pode estar gravada na folha
@@ -359,9 +353,18 @@ export const salvarFolhaEfetivos = createServerFn({ method: "POST" })
 
     for (const l of data.linhas) {
       const ex = byProf.get(l.profissional_id);
-      if (ex && ex.status_linha === "aprovada" && !isMasterFinal) {
+      const statusLinha = (ex?.status_linha ?? "pendente") as string;
+      if (ex && statusLinha === "aprovada" && !isMasterFinal) {
         throw new Error("Não é possível alterar uma linha que já foi aprovada.");
       }
+      // Folha já enviada/em análise/aprovada: a unidade só corrige o
+      // profissional cuja linha foi rejeitada ou devolvida.
+      if (!isMasterFinal && !folhaAberta && statusLinha !== "rejeitada" && statusLinha !== "devolvida") {
+        throw new Error(
+          "Folha já enviada — só é possível corrigir os profissionais com lançamento rejeitado ou devolvido.",
+        );
+      }
+
 
       // Concorrência Otimista: Verifica se a linha foi alterada por outro usuário
       if (ex?.updated_at && (l as any).updated_at) {
@@ -517,8 +520,18 @@ export const enviarFolhaEfetivos = createServerFn({ method: "POST" })
         updated_by: userId,
       } as never)
       .eq("id", frequencia_id)
-      .in("status", ["rascunho", "com_pendencias", "rejeitada"]);
+      .in("status", ["rascunho", "com_pendencias", "rejeitada", "devolvida", "enviada"]);
     if (error) throw new Error(error.message);
+
+    // Reenvio após correção: as linhas rejeitadas voltam para análise.
+    const { error: reErr } = await supabase
+      .from("frequencia_profissional")
+      .update({ status_linha: "pendente", updated_by: userId } as never)
+      .eq("frequencia_id", frequencia_id)
+      .eq("status_linha", "rejeitada")
+      .is("deleted_at", null);
+    if (reErr) throw new Error(reErr.message);
+
 
     const { count } = await supabase
       .from("frequencia_profissional")

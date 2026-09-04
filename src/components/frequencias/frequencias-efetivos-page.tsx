@@ -381,10 +381,22 @@ export function FrequenciasEfetivosPage() {
     !prazoBloqueado &&
     !compFechada &&
     has("frequencia.editar") &&
-    (folhaEditavel || isGestorPerfil) &&
     (isDiretor || isOperacional || isGestorPerfil);
 
-  const canEnviar = !prazoBloqueado && (folhaStatus === "rascunho" || folhaStatus === "com_pendencias" || folhaStatus === "rejeitada" || folhaStatus === "devolvida") && has("frequencia.enviar") && (isDiretor || isGestorPerfil);
+  /**
+   * Regra institucional: depois que a folha sai da unidade (enviada/em análise/
+   * aprovada), o Diretor só volta a editar o profissional cuja LINHA foi
+   * rejeitada ou devolvida para correção. Linha aprovada nunca é editável.
+   */
+  const linhaEditavel = (statusLinha: string | null | undefined) => {
+    const s = statusLinha ?? "pendente";
+    if (s === "aprovada") return false;
+    if (folhaEditavel) return true;
+    return s === "rejeitada" || s === "devolvida";
+  };
+
+  const canEnviar = !prazoBloqueado && (folhaStatus === "rascunho" || folhaStatus === "com_pendencias" || folhaStatus === "rejeitada" || folhaStatus === "devolvida" || ((folha?.itens ?? []) as any[]).some((it) => { const s = (it.linha as any)?.status_linha; return s === "rejeitada" || s === "devolvida"; })) && has("frequencia.enviar") && (isDiretor || isGestorPerfil);
+
 
   const salvarFn = useServerFn(salvarFolhaEfetivos);
   const enviarFn = useServerFn(enviarFolhaEfetivos);
@@ -1136,8 +1148,9 @@ export function FrequenciasEfetivosPage() {
                 const p = it.profissional;
                 const l = linhas[p.id];
                 if (!l) return null;
-                const linhaAprovada = (it.linha as any)?.status_linha === "aprovada";
-                const ro = !canEdit || linhaAprovada;
+                const statusLinha = ((it.linha as any)?.status_linha ?? "pendente") as string;
+                const ro = !canEdit || !linhaEditavel(statusLinha);
+
                 const situ = derivarSituacao(conf);
                 const overrideSituacao = overrideSituacaoFolha(conf);
                 const CelulaSituacao = (
@@ -1235,10 +1248,17 @@ export function FrequenciasEfetivosPage() {
                       />
                     </td>
                     <td className="text-center">
-                      <Badge variant="outline">
-                        {(it.linha as any)?.status_linha ?? "pendente"}
-                      </Badge>
+                      <StatusBadge
+                        domain="linha"
+                        value={statusLinha}
+                        title={
+                          (it.linha as any)?.observacao_analise
+                            ? `Motivo: ${(it.linha as any).observacao_analise}`
+                            : undefined
+                        }
+                      />
                     </td>
+
                   </tr>
                 );
               })}
