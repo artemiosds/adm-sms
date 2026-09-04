@@ -441,17 +441,10 @@ export async function gerarFolhaContratadosOficial(input: PdfContratadosInput): 
     },
   });
 
-  let assinaturaBaseY: number | undefined;
-  if (assinaturas.length > 0) {
-    const lastY = (doc as any).lastAutoTable.finalY || 44;
-    let signY = lastY + 5;
-    if (signY + 35 > pageH - 15) {
-      doc.addPage();
-      drawHeader();
-      signY = 44 + 5;
-    }
-    assinaturaBaseY = signY;
-  }
+  // A zona inferior (45mm) fica sempre livre: as assinaturas são carimbadas
+  // dentro dela em TODAS as páginas, sem necessidade de página extra.
+  const assinaturaBaseY: number | undefined =
+    assinaturas.length > 0 ? pageH - 42 : undefined;
 
   const compFile = `${String(input.competencia.mes).padStart(2, "0")}-${input.competencia.ano}`;
   await finalizarPdf(doc, {
