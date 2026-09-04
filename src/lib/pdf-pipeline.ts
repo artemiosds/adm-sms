@@ -308,6 +308,26 @@ async function salvarPosicaoPadrao(
   }
 }
 
+/**
+ * Carimba a MESMA assinatura (posição/tamanho idênticos) em todas as páginas
+ * do documento. O seletor de página do modal serve apenas para o preview.
+ */
+export function desenharAssinaturaEmTodasPaginas(
+  doc: jsPDF,
+  a: AssinaturaResolvida,
+  pos: { xMm: number; yMm: number; tamanhoPercentual?: number },
+): void {
+  const total = doc.getNumberOfPages();
+  for (let p = 1; p <= total; p++) {
+    desenharAssinaturaEm(doc, a, { ...pos, pagina: p });
+  }
+  try {
+    doc.setPage(total);
+  } catch {
+    /* ignora */
+  }
+}
+
 export type FinalizarPdfOpts = {
   filename: string;
   tipo?: TipoDocumento;
