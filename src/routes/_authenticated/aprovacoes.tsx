@@ -49,22 +49,72 @@ import { usePermissions, useCurrentUser } from "@/hooks/use-permissions";
 import { useMunicipioParametros } from "@/hooks/use-municipio-parametros";
 import type { Database } from "@/integrations/supabase/types";
 import { NumberCell, ErpGridProvider, ErpTbody } from "@/components/erp-grid";
+import { z } from "zod";
+import { fallback } from "@/lib/search-validator";
+import { useNavigate } from "@tanstack/react-router";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { ChevronDown, MoreVertical, Search, X } from "lucide-react";
+import { cn } from "@/lib/utils";
+
 
 type StatusFreq = Database["public"]["Enums"]["status_frequencia"];
 
-const FILTROS: { value: "pendentes" | StatusFreq | "todas"; label: string }[] = [
+type FiltroStatus = "todas" | "pendentes" | StatusFreq;
+
+const FILTROS: { value: FiltroStatus; label: string }[] = [
+  { value: "todas", label: "Todas" },
   { value: "pendentes", label: "Pendentes (enviada + em análise)" },
   { value: "enviada", label: "Enviadas" },
   { value: "em_analise", label: "Em análise" },
   { value: "aprovada", label: "Aprovadas" },
   { value: "rejeitada", label: "Rejeitadas" },
   { value: "com_pendencias", label: "Com pendências" },
-  { value: "todas", label: "Todas" },
 ];
 
-export const Route = createFileRoute("/_authenticated/aprovacoes")({ errorComponent: ErrorComponent,
+const MESES = [
+  "Janeiro",
+  "Fevereiro",
+  "Março",
+  "Abril",
+  "Maio",
+  "Junho",
+  "Julho",
+  "Agosto",
+  "Setembro",
+  "Outubro",
+  "Novembro",
+  "Dezembro",
+];
+
+function rotuloCompetencia(mes: number, ano: number) {
+  return `${MESES[(mes ?? 1) - 1] ?? mes}/${ano}`;
+}
+
+const PAGINA_TAMANHO = 20;
+
+const aprovacoesSearchSchema = z.object({
+  competencia: fallback(z.string(), "").default(""),
+  status: fallback(z.string(), "todas").default("todas"),
+  unidade: fallback(z.string(), "").default(""),
+  tipo: fallback(z.string(), "").default(""),
+  q: fallback(z.string(), "").default(""),
+  de: fallback(z.string(), "").default(""),
+  ate: fallback(z.string(), "").default(""),
+  pagina: fallback(z.number().int(), 1).default(1),
+  visao: fallback(z.string(), "tabela").default("tabela"),
+});
+
+export const Route = createFileRoute("/_authenticated/aprovacoes")({
+  errorComponent: ErrorComponent,
+  validateSearch: aprovacoesSearchSchema,
   component: AprovacoesGuard,
 });
+
 
 function AprovacoesGuard() {
   const { has, isLoading } = usePermissions();
