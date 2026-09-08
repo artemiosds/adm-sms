@@ -49,6 +49,18 @@ import { usePermissions, useCurrentUser } from "@/hooks/use-permissions";
 import { useMunicipioParametros } from "@/hooks/use-municipio-parametros";
 import type { Database } from "@/integrations/supabase/types";
 import { NumberCell, ErpGridProvider, ErpTbody } from "@/components/erp-grid";
+import { z } from "zod";
+import { fallback } from "@/lib/search-validator";
+import { useNavigate } from "@tanstack/react-router";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { ChevronDown, MoreVertical, Search, X } from "lucide-react";
+import { cn } from "@/lib/utils";
+
 
 type StatusFreq = Database["public"]["Enums"]["status_frequencia"];
 
