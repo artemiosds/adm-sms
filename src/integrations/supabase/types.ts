@@ -451,6 +451,81 @@ export type Database = {
         }
         Relationships: []
       }
+      cargo_categoria_map: {
+        Row: {
+          cargo_id: string | null
+          categoria_id: string | null
+          created_at: string | null
+          id: string
+          is_pmm: boolean | null
+          updated_at: string | null
+        }
+        Insert: {
+          cargo_id?: string | null
+          categoria_id?: string | null
+          created_at?: string | null
+          id?: string
+          is_pmm?: boolean | null
+          updated_at?: string | null
+        }
+        Update: {
+          cargo_id?: string | null
+          categoria_id?: string | null
+          created_at?: string | null
+          id?: string
+          is_pmm?: boolean | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cargo_categoria_map_cargo_id_fkey"
+            columns: ["cargo_id"]
+            isOneToOne: false
+            referencedRelation: "cargos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cargo_categoria_map_categoria_id_fkey"
+            columns: ["categoria_id"]
+            isOneToOne: false
+            referencedRelation: "cargo_categorias"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      cargo_categorias: {
+        Row: {
+          ativo: boolean | null
+          created_at: string | null
+          grupo: string
+          id: string
+          nome: string
+          ordem: number | null
+          slug: string
+          updated_at: string | null
+        }
+        Insert: {
+          ativo?: boolean | null
+          created_at?: string | null
+          grupo?: string
+          id?: string
+          nome: string
+          ordem?: number | null
+          slug: string
+          updated_at?: string | null
+        }
+        Update: {
+          ativo?: boolean | null
+          created_at?: string | null
+          grupo?: string
+          id?: string
+          nome?: string
+          ordem?: number | null
+          slug?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       cargos: {
         Row: {
           area_profissional: string | null
@@ -719,6 +794,24 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      cronosds1: {
+        Row: {
+          created_at: string
+          id: number
+          numero: number | null
+        }
+        Insert: {
+          created_at?: string
+          id?: number
+          numero?: number | null
+        }
+        Update: {
+          created_at?: string
+          id?: number
+          numero?: number | null
+        }
+        Relationships: []
       }
       documento_categorias: {
         Row: {
@@ -5527,6 +5620,8 @@ export type Database = {
           usuario_id: string
         }[]
       }
+      audit_actor_email: { Args: { _uid: string }; Returns: string }
+      audit_request_ip: { Args: never; Returns: string }
       check_frequencia_duplicada: {
         Args: { _competencia_id: string; _profissional_id: string }
         Returns: boolean
@@ -5942,6 +6037,7 @@ export type Database = {
         | "afastamento_inss"
         | "falta_pad"
         | "inativo"
+        | "afastado_laudo"
       status_competencia:
         | "aberta"
         | "em_processamento"
@@ -5986,6 +6082,7 @@ export type Database = {
         | "afastamento_inss"
         | "falta_pad"
         | "cedido"
+        | "afastado_laudo"
       status_usuario:
         | "ativo"
         | "inativo"
@@ -6254,6 +6351,7 @@ export const Constants = {
         "afastamento_inss",
         "falta_pad",
         "inativo",
+        "afastado_laudo",
       ],
       status_competencia: [
         "aberta",
@@ -6302,6 +6400,7 @@ export const Constants = {
         "afastamento_inss",
         "falta_pad",
         "cedido",
+        "afastado_laudo",
       ],
       status_usuario: ["ativo", "inativo", "bloqueado", "suspenso", "pendente"],
       tipo_assinatura: ["assinatura", "carimbo", "logo"],
