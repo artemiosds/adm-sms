@@ -1,6 +1,7 @@
 import type jsPDF from "jspdf";
 import { supabase } from "@/integrations/supabase/client";
 import { capturarMetadadosDocumento } from "./documento-metadata.functions";
+import { getDocumentValidationUrl } from "./document-validation-url";
 
 async function sha256Hex(input: string): Promise<string> {
   const data = new TextEncoder().encode(input);
@@ -107,7 +108,7 @@ export async function registrarDocumentoAssinado(input: SignInput): Promise<Sign
 
   if (error || !data) throw error ?? new Error("Falha ao registrar documento");
 
-  const validationUrl = `${window.location.origin}/api/public/validar-documento?codigo=${codigoValidacao}`;
+  const validationUrl = getDocumentValidationUrl(codigoValidacao);
   const qrDataUrl = await createQrDataUrl(validationUrl);
 
   return {
@@ -136,10 +137,27 @@ export async function armazenarPdfAssinado(sig: SignResult, blob: Blob): Promise
     const up = await supabase.storage
       .from("documentos-assinados")
       .upload(path, blob, { contentType: "application/pdf", upsert: true });
-    if (up.error) return;
-    await supabase.from("documentos_assinados").update({ metadata: { pdf_storage_path: path } } as any).eq("id", sig.id);
-  } catch {
-    /* best effort */
+    if (up.error) {
+      console.error("[documento] falha ao guardar PDF original:", up.error.message);
+      return;
+    }
+    // Preserva o metadata existente e apenas acrescenta o caminho do arquivo.
+    const { data: atual } = await supabase
+      .from("documentos_assinados")
+      .select("metadata")
+      .eq("id", sig.id)
+      .maybeSingle();
+    const metadataAtual = (atual?.metadata ?? {}) as Record<string, unknown>;
+    const { error } = await supabase
+      .from("documentos_assinados")
+      .update({
+        pdf_storage_path: path,
+        metadata: { ...metadataAtual, pdf_storage_path: path },
+      } as never)
+      .eq("id", sig.id);
+    if (error) console.error("[documento] falha ao gravar caminho do PDF:", error.message);
+  } catch (e) {
+    console.error("[documento] erro ao armazenar PDF assinado:", e);
   }
 }
 

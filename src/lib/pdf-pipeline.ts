@@ -15,6 +15,7 @@ import {
 } from "@/lib/pdf-assinaturas";
 import { getSignatureSignedUrl } from "@/lib/assinatura-storage";
 import { requestPdfPosicao } from "@/lib/pdf-posicao-bus";
+import { getDocumentValidationUrl } from "@/lib/document-validation-url";
 
 /** Dimensões de referência usadas pelo editor visual (A4 retrato em px) */
 const REF_W = 400;
@@ -181,11 +182,12 @@ export function drawSignatureStamp(
   data: string,
   validationCode: string,
   marginX = 14,
-  qrDataUrl?: string
+  qrDataUrl?: string,
+  yOverride?: number,
 ) {
   const pageHeight = doc.internal.pageSize.getHeight();
   const pageWidth = doc.internal.pageSize.getWidth();
-  const y = pageHeight - 24;
+  const y = yOverride ?? pageHeight - 24;
   const usableWidth = pageWidth - marginX * 2;
   const colWidth = usableWidth / 2;
 
@@ -216,7 +218,7 @@ export function drawSignatureStamp(
   ty += 3;
   doc.text(`Hash SHA-256: ${hash.slice(0, 32)}...`, textX, ty);
   ty += 3;
-  const validationUrl = `${window.location.origin}/api/public/validar-documento?codigo=${validationCode}`;
+  const validationUrl = getDocumentValidationUrl(validationCode);
   doc.setTextColor(37, 99, 235);
   doc.text("Valide em:", textX, ty);
   doc.text(validationUrl, textX + 10, ty);
@@ -244,12 +246,19 @@ export function drawSignatureStamp(
 export function desenharAssinaturaEm(
   doc: jsPDF,
   a: AssinaturaResolvida,
-  pos: { xMm: number; yMm: number; pagina?: number; tamanhoPercentual?: number },
+  pos: {
+    xMm: number;
+    yMm: number;
+    pagina?: number;
+    tamanhoPercentual?: number;
+    /** Desenha apenas a imagem do carimbo, sem traço, nome, cargo ou matrícula. */
+    somenteImagem?: boolean;
+  },
 ): void {
   const factor = (pos.tamanhoPercentual ?? a.tamanho_percentual ?? 80) / 100;
   const w = BASE_W * factor;
   const h = BASE_H * factor;
-  
+
   try {
     if (pos.pagina && pos.pagina >= 1) doc.setPage(pos.pagina);
   } catch {
@@ -262,6 +271,8 @@ export function desenharAssinaturaEm(
     desenharImagemProporcional(doc, a.imageData, x, y, w, h);
   }
 
+  if (pos.somenteImagem) return;
+
   const lineY = y + h + 1.5;
   doc.setDrawColor(120, 120, 120);
   doc.setLineWidth(0.2);
@@ -271,14 +282,22 @@ export function desenharAssinaturaEm(
   if (a.mostrar_nome && a.titular_nome) {
     doc.setFont("helvetica", "bold");
     doc.setFontSize(8);
-    doc.text(a.titular_nome, x + w / 2, ty, { align: "center", maxWidth: w });
-    ty += 3.4;
+    const linhasNome = (doc.splitTextToSize(a.titular_nome, Math.max(1, w - 2)) as string[])
+      .slice(0, 3);
+    for (const linha of linhasNome) {
+      doc.text(linha, x + w / 2, ty, { align: "center" });
+      ty += 3.4;
+    }
   }
   if (a.mostrar_cargo && a.titular_cargo) {
     doc.setFont("helvetica", "normal");
     doc.setFontSize(7);
-    doc.text(a.titular_cargo, x + w / 2, ty, { align: "center", maxWidth: w });
-    ty += 3.2;
+    const linhasCargo = (doc.splitTextToSize(a.titular_cargo, Math.max(1, w - 2)) as string[])
+      .slice(0, 2);
+    for (const linha of linhasCargo) {
+      doc.text(linha, x + w / 2, ty, { align: "center" });
+      ty += 3.2;
+    }
   }
   const matricula = a.metadata?.matricula as string | undefined;
   if (matricula) {
@@ -315,7 +334,7 @@ async function salvarPosicaoPadrao(
 export function desenharAssinaturaEmTodasPaginas(
   doc: jsPDF,
   a: AssinaturaResolvida,
-  pos: { xMm: number; yMm: number; tamanhoPercentual?: number },
+  pos: { xMm: number; yMm: number; tamanhoPercentual?: number; somenteImagem?: boolean },
 ): void {
   const total = doc.getNumberOfPages();
   for (let p = 1; p <= total; p++) {
@@ -344,10 +363,18 @@ export type FinalizarPdfOpts = {
   semModal?: boolean;
   /** repete as assinaturas em todas as páginas (default: true) */
   repetirEmTodasPaginas?: boolean;
+  /** Carimba apenas a imagem da assinatura (sem traço/nome/cargo abaixo). */
+  somenteImagem?: boolean;
   /** callback com o blob final (upload/arquivamento). O terceiro argumento é o hash SHA-256 real. */
   onBlob?: (blob: Blob, filename: string, hash: string) => void | Promise<void>;
   /** Metadados extras para o registro do documento */
   competencia?: { mes: number; ano: number };
+  /** Posição vertical do bloco de validação; permite reservar uma faixa exclusiva no documento. */
+  ySeloValidacaoMm?: number;
+  /** Limita o tamanho das assinaturas para caberem em uma faixa compacta de rodapé. */
+  tamanhoMaximoAssinaturaPercentual?: number;
+  /** Ignora posições verticais antigas e usa a faixa segura definida pelo gerador. */
+  forcarYPadraoAssinaturas?: boolean;
 };
 
 
@@ -358,6 +385,17 @@ export type FinalizarPdfOpts = {
  */
 export async function finalizarPdf(doc: jsPDF, opts: FinalizarPdfOpts): Promise<void> {
   const finalFilename = opts.filename.endsWith(".pdf") ? opts.filename : `${opts.filename}.pdf`;
+  let publicOriginReady = true;
+  try {
+    getDocumentValidationUrl("verificar-endereco");
+  } catch (error) {
+    publicOriginReady = false;
+    const { toast } = await import("sonner");
+    toast.error("PDF oficial não emitido", {
+      description: error instanceof Error ? error.message : "Endereço público oficial indisponível.",
+    });
+  }
+  if (!publicOriginReady) return;
 
   // Persiste o registro do documento no banco para permitir validação futura
   let documentoId: string | null = null;
@@ -376,28 +414,48 @@ export async function finalizarPdf(doc: jsPDF, opts: FinalizarPdfOpts): Promise<
     const randomSuffix = Math.random().toString(36).substring(2, 10).toUpperCase();
     validationCode = `HSM-2026-${randomSuffix}`;
 
-    const { data: newDoc } = await supabase
+    const competencia = opts.competencia;
+    const descricao = competencia
+      ? `${finalFilename.replace(/\.pdf$/i, "")} — ${String(competencia.mes).padStart(2, "0")}/${competencia.ano}`
+      : finalFilename.replace(/\.pdf$/i, "");
+
+    const { data: newDoc, error: erroRegistro } = await supabase
       .from("documentos_assinados")
       .insert({
         documento_tipo: opts.tipo || "relatorio",
-        descricao: finalFilename,
+        descricao,
         hash_sha256: hashHex,
         codigo_validacao: validationCode,
         nome_assinante: me?.nome_completo || "Sistema",
         assinado_por_id: me?.id || null,
+        status: "ativo",
         metadata: {
           filename: finalFilename,
-          competencia: (opts as any).competencia,
-        }
-      } as any)
+          competencia: opts.competencia ?? null,
+          unidade_id: opts.unidadeId ?? null,
+          secretaria_id: opts.secretariaId ?? null,
+        },
+      } as never)
       .select("id")
       .single();
 
+    if (erroRegistro) throw erroRegistro;
     if (newDoc) {
       documentoId = newDoc.id;
     }
   } catch (err) {
-    console.warn("Erro ao registrar documento para validação:", err);
+    console.error("Erro ao registrar documento para validação:", err);
+    validationCode = null;
+    const msg = err instanceof Error ? err.message : String(err);
+    try {
+      const { toast } = await import("sonner");
+      toast.warning(
+        "O PDF foi gerado, mas não pôde ser registrado em Documentos Emitidos.",
+        { description: msg },
+      );
+    } catch {
+      /* ambiente sem toast */
+    }
   }
   /** Calcula o hash SHA-256 real do conteúdo do PDF */
   const calcularHashPdf = async (pdfDoc: jsPDF): Promise<string> => {
@@ -412,8 +470,45 @@ export async function finalizarPdf(doc: jsPDF, opts: FinalizarPdfOpts): Promise<
     }
   };
 
+  /** Guarda o PDF final na área privada para reemissão fiel e download pelo portal. */
+  const guardarPdfOriginal = async (pdfDoc: jsPDF, hash: string) => {
+    if (!documentoId) return;
+    try {
+      const { data: u } = await supabase.auth.getUser();
+      const uid = u.user?.id;
+      if (!uid) return;
+      const path = `${uid}/${documentoId}.pdf`;
+      const blob = pdfDoc.output("blob");
+      const up = await supabase.storage
+        .from("documentos-assinados")
+        .upload(path, blob, { contentType: "application/pdf", upsert: true });
+      if (up.error) {
+        console.error("[documento] falha ao guardar PDF original:", up.error.message);
+        return;
+      }
+      const { data: atual } = await supabase
+        .from("documentos_assinados")
+        .select("metadata")
+        .eq("id", documentoId)
+        .maybeSingle();
+      const metadataAtual = (atual?.metadata ?? {}) as Record<string, unknown>;
+      const { error } = await supabase
+        .from("documentos_assinados")
+        .update({
+          pdf_storage_path: path,
+          hash_sha256: hash,
+          metadata: { ...metadataAtual, pdf_storage_path: path },
+        } as never)
+        .eq("id", documentoId);
+      if (error) console.error("[documento] falha ao gravar caminho do PDF:", error.message);
+    } catch (e) {
+      console.error("[documento] erro ao guardar PDF original:", e);
+    }
+  };
+
   const baixar = async (pdfDoc: jsPDF = doc) => {
     const hash = await calcularHashPdf(pdfDoc);
+    await guardarPdfOriginal(pdfDoc, hash);
     if (opts.onBlob) {
       const blob = pdfDoc.output("blob");
       await opts.onBlob(blob, finalFilename, hash);
@@ -469,7 +564,7 @@ export async function finalizarPdf(doc: jsPDF, opts: FinalizarPdfOpts): Promise<
       const hashHex = Array.from(new Uint8Array(hashBuffer))
         .map((b) => b.toString(16).padStart(2, "0"))
         .join("");
-      const validationUrl = `${window.location.origin}/api/public/validar-documento?codigo=${validationCode}`;
+      const validationUrl = getDocumentValidationUrl(validationCode);
       const QRCode = await import("qrcode");
       const qrDataUrl = await (QRCode.toDataURL ?? (QRCode as any).default?.toDataURL)(
         validationUrl,
@@ -484,6 +579,7 @@ export async function finalizarPdf(doc: jsPDF, opts: FinalizarPdfOpts): Promise<
         validationCode,
         14,
         qrDataUrl,
+        opts.ySeloValidacaoMm,
       );
     } catch (err) {
       console.warn("Falha ao aplicar selo de validação:", err);
@@ -504,7 +600,9 @@ export async function finalizarPdf(doc: jsPDF, opts: FinalizarPdfOpts): Promise<
     if (temPadraoSalvo) {
       return {
         x: ((a.posicao_x as number) / REF_W) * pageWidthMm,
-        y: ((a.posicao_y as number) / REF_H) * pageHeightMm,
+        y: opts.forcarYPadraoAssinaturas
+          ? (opts.yPadraoMm ?? pageHeightMm - 42)
+          : ((a.posicao_y as number) / REF_H) * pageHeightMm,
       };
     }
     const colunas = Math.max(1, Math.min(candidatas.length, 3));
@@ -537,7 +635,10 @@ export async function finalizarPdf(doc: jsPDF, opts: FinalizarPdfOpts): Promise<
       xPadraoMm: x,
       yPadraoMm: y,
       paginaPadrao: paginaBase,
-      tamanhoPercentualPadrao: a.tamanho_percentual ?? 80,
+      tamanhoPercentualPadrao: Math.min(
+        a.tamanho_percentual ?? 80,
+        opts.tamanhoMaximoAssinaturaPercentual ?? Number.POSITIVE_INFINITY,
+      ),
       incluirPadrao:
         (!!meuPerfil && a.perfil_codigo === meuPerfil) || a.perfil_codigo === "DIRETOR_UNIDADE",
     };
@@ -549,18 +650,34 @@ export async function finalizarPdf(doc: jsPDF, opts: FinalizarPdfOpts): Promise<
 
   const repetir = opts.repetirEmTodasPaginas !== false;
 
+  const somenteImagem = opts.somenteImagem === true;
+
   const desenhar = (
     a: AssinaturaResolvida,
     pos: { xMm: number; yMm: number; pagina?: number; tamanhoPercentual?: number },
   ) => {
+    // Quando o documento reservou uma faixa para validação, uma posição antiga
+    // salva no editor nunca pode empurrar a assinatura para dentro dessa faixa.
+    const tamanho = Math.min(
+      pos.tamanhoPercentual ?? a.tamanho_percentual ?? 80,
+      opts.tamanhoMaximoAssinaturaPercentual ?? Number.POSITIVE_INFINITY,
+    );
+    // Reserva a altura máxima do texto multilinha abaixo do carimbo. Assim,
+    // nomes compridos não invadem cargo, validação ou rodapé.
+    const alturaAssinatura = BASE_H * (tamanho / 100) + (somenteImagem ? 0 : 20);
+    const ySeguro = opts.ySeloValidacaoMm == null
+      ? pos.yMm
+      : Math.min(pos.yMm, Math.max(0, opts.ySeloValidacaoMm - alturaAssinatura - 3));
+    const posSegura = { ...pos, yMm: ySeguro };
     if (repetir) {
       desenharAssinaturaEmTodasPaginas(doc, a, {
-        xMm: pos.xMm,
-        yMm: pos.yMm,
-        tamanhoPercentual: pos.tamanhoPercentual,
+        xMm: posSegura.xMm,
+        yMm: posSegura.yMm,
+        tamanhoPercentual: tamanho,
+        somenteImagem,
       });
     } else {
-      desenharAssinaturaEm(doc, a, pos);
+      desenharAssinaturaEm(doc, a, { ...posSegura, tamanhoPercentual: tamanho, somenteImagem });
     }
   };
 
@@ -577,8 +694,8 @@ export async function finalizarPdf(doc: jsPDF, opts: FinalizarPdfOpts): Promise<
   };
 
   if (opts.semModal) {
-    await aplicarSelo();
     desenharPadroes();
+    await aplicarSelo();
     await baixar();
     return;
   }
@@ -604,16 +721,14 @@ export async function finalizarPdf(doc: jsPDF, opts: FinalizarPdfOpts): Promise<
 
   // Modal indisponível → posições padrão (nunca quebra o download)
   if (escolha === undefined) {
-    await aplicarSelo();
     desenharPadroes();
+    await aplicarSelo();
     await baixar();
     return;
   }
 
   // Usuário cancelou
   if (escolha === null) return;
-
-  await aplicarSelo();
 
   for (const item of escolha.itens) {
     if (!item.incluir) continue;
@@ -635,5 +750,6 @@ export async function finalizarPdf(doc: jsPDF, opts: FinalizarPdfOpts): Promise<
     }
   }
 
+  await aplicarSelo();
   await baixar();
 }

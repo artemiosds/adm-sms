@@ -5,6 +5,7 @@
 import type jsPDF from "jspdf";
 import { auditClient } from "./audit-client";
 import { capturarMetadadosDocumento } from "./documento-metadata.functions";
+import { getCanonicalPublicOrigin } from "./document-validation-url";
 
 export type Rastreio = {
   nome: string;
@@ -59,8 +60,11 @@ export async function gerarCertificado(opts: {
     /* fallback silencioso */
   }
 
-  const origem = typeof window !== "undefined" ? window.location.origin : "";
-  const verificacaoUrl = `${origem}/validar/hash-${hash.slice(0, 16)}`;
+  const origem = getCanonicalPublicOrigin();
+  if (!origem) {
+    throw new Error("Defina o endereço público oficial antes de gerar um certificado com QR Code.");
+  }
+  const verificacaoUrl = `${origem}/api/public/validar-documento`;
   return {
     hash,
     qrDataUrl: await qrDataUrl(verificacaoUrl),
@@ -69,25 +73,32 @@ export async function gerarCertificado(opts: {
   };
 }
 
-/** Marca d'água diagonal de rastreio em todas as páginas (perfil com acesso completo). */
+/**
+ * Marca d'água única de rastreio, centralizada e diagonal, com opacidade baixa,
+ * para não competir com o conteúdo (tabelas, cabeçalho institucional).
+ */
 export function drawWatermark(doc: jsPDF, r: Rastreio) {
   const total = doc.getNumberOfPages();
   const w = doc.internal.pageSize.getWidth();
   const h = doc.internal.pageSize.getHeight();
-  const linha = `${r.nome} · ${r.cpfOuEmail} · ${new Date(r.dataHora).toLocaleString("pt-BR")} · IP ${r.ip ?? "n/d"}`;
+  const linha = `${r.nome} · ${r.cpfOuEmail} · ${new Date(r.dataHora).toLocaleString("pt-BR")}`;
   for (let p = 1; p <= total; p++) {
     doc.setPage(p);
     doc.saveGraphicsState();
     // @ts-expect-error jsPDF GState existe em runtime
-    doc.setGState(new doc.GState({ opacity: 0.08 }));
-    doc.setFontSize(14);
+    doc.setGState(new doc.GState({ opacity: 0.05 }));
+    doc.setTextColor(120);
+    doc.setFontSize(20);
     doc.setFont("helvetica", "bold");
-    for (let y = 40; y < h; y += 48) {
-      doc.text(linha, w / 2, y, { align: "center", angle: 20 });
-    }
+    doc.text("CÓPIA RASTREADA", w / 2, h / 2 - 6, { align: "center", angle: 30 });
+    doc.setFontSize(9);
+    doc.setFont("helvetica", "normal");
+    doc.text(linha, w / 2, h / 2 + 6, { align: "center", angle: 30 });
     doc.restoreGraphicsState();
+    doc.setTextColor(0);
   }
 }
+
 
 /** Rodapé de fé pública com hash SHA-256 e QR de verificação em todas as páginas. */
 export function drawCertificadoRodape(doc: jsPDF, cert: Certificado) {
@@ -120,6 +131,50 @@ export function drawCertificadoRodape(doc: jsPDF, cert: Certificado) {
     );
     doc.setTextColor(0);
   }
+}
+
+/**
+ * Box discreto de fé pública desenhado UMA única vez, no fechamento do
+ * documento (última página), abaixo do bloco de assinatura.
+ * Devolve o Y final ocupado.
+ */
+export function drawCertificadoBox(
+  doc: jsPDF,
+  cert: Certificado,
+  x: number,
+  y: number,
+  largura: number,
+): number {
+  const alt = 22;
+  doc.setDrawColor(210);
+  doc.setLineWidth(0.2);
+  doc.roundedRect(x, y, largura, alt, 1.5, 1.5, "S");
+
+  let tx = x + 3;
+  const ty = y + 4;
+  if (cert.qrDataUrl) {
+    try {
+      doc.addImage(cert.qrDataUrl, "PNG", x + 3, y + 3, 16, 16);
+      tx = x + 22;
+    } catch {
+      /* ignore */
+    }
+  }
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(8);
+  doc.setTextColor(90);
+  doc.text("Documento com fé pública", tx, ty);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(7.5);
+  doc.text(`SHA-256: ${cert.hash}`, tx, ty + 4);
+  doc.text(
+    `Emitido por ${cert.rastreio.nome} em ${new Date(cert.rastreio.dataHora).toLocaleString("pt-BR")} · IP ${cert.rastreio.ip ?? "n/d"}`,
+    tx,
+    ty + 8,
+  );
+  doc.text(`Validação: ${cert.verificacaoUrl}`, tx, ty + 12);
+  doc.setTextColor(0);
+  return y + alt;
 }
 
 /** Bloco de fé pública para exportações XLSX/CSV (última linha da planilha). */

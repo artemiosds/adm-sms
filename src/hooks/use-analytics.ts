@@ -12,6 +12,12 @@ import {
   type FrequenciaRow,
 } from "@/lib/analytics-aggregations";
 import { valoresDoFiltroSituacao } from "@/lib/situacao-funcional";
+import {
+  kpisDaRpc,
+  kpisDoBreakdown,
+  type KpisForcaTrabalho,
+  type KpisSituacaoRpc,
+} from "@/lib/kpis-forca-trabalho";
 
 export type AnalyticsFilters = {
   competenciaId?: string | null;
@@ -172,18 +178,17 @@ export function useAnalytics(filters: AnalyticsFilters, options?: { staleTime?: 
     staleTime,
     gcTime,
     queryFn: async () => {
+      // Fonte única: pendências institucionais em aberto (tabela `pendencias`).
       const q = supabase
-        .from("frequencia_pendencias")
-        .select("id, frequencias!inner(competencia_unidades!inner(unidade_id))", {
-          count: "exact",
-          head: true,
-        })
-        .is("deleted_at", null);
+        .from("pendencias")
+        .select("id", { count: "exact", head: true })
+        .is("deleted_at", null)
+        .in("status", ["aberta", "em_analise", "aguardando_resposta", "respondida", "reaberta"]);
 
       if (filters.unidadeId) {
-        q.eq("frequencias.competencia_unidades.unidade_id" as never, filters.unidadeId);
+        q.eq("unidade_id", filters.unidadeId);
       } else if (!isMaster && userCtx?.unidades && Array.isArray(userCtx.unidades) && userCtx.unidades.length > 0) {
-        q.in("frequencias.competencia_unidades.unidade_id" as never, userCtx.unidades as string[]);
+        q.in("unidade_id", userCtx.unidades as string[]);
       }
 
       const { count, error } = await q;
@@ -210,6 +215,7 @@ export function useAnalytics(filters: AnalyticsFilters, options?: { staleTime?: 
       if (error) throw error;
       return data as {
         status_breakdown: Record<string, number>;
+        kpis_situacao: KpisSituacaoRpc;
         top_unidades: Array<{ id: string; nome: string; sigla: string | null; total: number }>;
         top_cargos: Array<{ id: string; nome: string; total: number }>;
         vinculo_breakdown: Record<string, number>;
@@ -378,6 +384,20 @@ export function useAnalytics(filters: AnalyticsFilters, options?: { staleTime?: 
     isError: summaryQuery.isError,
   };
 
+  /**
+   * Indicadores institucionais de força de trabalho (regra única de
+   * `src/lib/kpis-forca-trabalho.ts`). A RPC já devolve calculado; quando a
+   * competência ainda não resolveu, derivamos do breakdown.
+   */
+  const kpisSituacao: { data: KpisForcaTrabalho; isLoading: boolean } = {
+    data: summaryQuery.data?.kpis_situacao
+      ? kpisDaRpc(summaryQuery.data.kpis_situacao)
+      : kpisDoBreakdown(summaryQuery.data?.status_breakdown),
+    isLoading: summaryQuery.isLoading,
+  };
+
+
+
   const vinculoBreakdown = {
     data: summaryQuery.data?.vinculo_breakdown ?? {},
     isLoading: summaryQuery.isLoading,
@@ -460,20 +480,14 @@ export function useAnalytics(filters: AnalyticsFilters, options?: { staleTime?: 
     enabled: !!previousCompetenciaId.data && !isPermissionsLoading,
     queryFn: async () => {
       const q = supabase
-        .from("frequencia_pendencias")
-        .select("id, frequencias!inner(competencia_unidades!inner(competencia_id, unidade_id))", {
-          count: "exact",
-          head: true,
-        })
+        .from("pendencias")
+        .select("id", { count: "exact", head: true })
         .is("deleted_at", null)
-        .eq(
-          "frequencias.competencia_unidades.competencia_id" as never,
-          previousCompetenciaId.data as string,
-        );
+        .eq("competencia_id", previousCompetenciaId.data as string);
       if (filters.unidadeId) {
-        q.eq("frequencias.competencia_unidades.unidade_id" as never, filters.unidadeId);
+        q.eq("unidade_id", filters.unidadeId);
       } else if (!isMaster && userCtx?.unidades && Array.isArray(userCtx.unidades) && userCtx.unidades.length > 0) {
-        q.in("frequencias.competencia_unidades.unidade_id" as never, userCtx.unidades as string[]);
+        q.in("unidade_id", userCtx.unidades as string[]);
       }
       const { count, error } = await q;
       if (error) throw error;
@@ -622,6 +636,7 @@ export function useAnalytics(filters: AnalyticsFilters, options?: { staleTime?: 
     alertas,
     rhKpis,
     statusBreakdown,
+    kpisSituacao,
     vinculoBreakdown,
     distribuicaoUnidade,
     distribuicaoCargo,

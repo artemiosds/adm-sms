@@ -74,7 +74,6 @@ export type StatusDomain =
   | "unidade"
   | "usuario";
 
-
 type Registry = Record<StatusDomain, { order: readonly string[]; map: Record<string, StatusMeta> }>;
 
 const REGISTRY: Registry = {
@@ -261,6 +260,7 @@ const REGISTRY: Registry = {
       "licenca_estudo",
       "atestado",
       "afastamento_inss",
+      "afastado_laudo",
       "falta_pad",
       "vacancia",
       "cedido",
@@ -364,13 +364,21 @@ const REGISTRY: Registry = {
         colorToken: "warning",
         description: "Afastado pelo INSS (auxílio-doença/acidente).",
       },
+      afastado_laudo: {
+        label: "Afastado por Laudo",
+        variant: "secondary",
+        className: "bg-warning-soft text-warning-soft-foreground",
+        icon: UserMinus,
+        colorToken: "warning",
+        description: "Afastado mediante laudo médico pericial.",
+      },
       falta_pad: {
-        label: "Falta informada ao RH (PAD)",
+        label: "Falta informada ao RH",
         variant: "secondary",
         className: "bg-danger-soft text-danger-soft-foreground",
         icon: AlertTriangle,
         colorToken: "danger",
-        description: "Falta injustificada informada ao RH via PAD.",
+        description: "Falta injustificada informada ao RH.",
       },
       vacancia: {
         label: "Vacância",

@@ -26,6 +26,22 @@ import { PrivacidadeLgpd } from "@/components/auditoria/privacidade-lgpd";
 import { usePermissions, useCurrentUser } from "@/hooks/use-permissions";
 import { nivelPrivacidade } from "@/lib/lgpd";
 import { gerarPdfAuditoriaFolha } from "@/lib/pdf-auditoria-folha";
+import { detectarAchados, type LinhaTrilha } from "@/lib/auditoria-achados";
+import { Textarea } from "@/components/ui/textarea";
+
+/** Exibição padronizada do nome da tabela (sem prefixo de schema). */
+function nomeTabela(t: string): string {
+  return t.replace(/^public\./, "");
+}
+
+/** Autoria real da operação; nunca mascara ausência de autor como "sistema". */
+function autorLabel(r: { usuario_email: string | null; usuario_id: string | null }) {
+  if (r.usuario_email) return <span>{r.usuario_email}</span>;
+  if (r.usuario_id)
+    return <span className="font-mono text-xs">{r.usuario_id.slice(0, 8)}… (e-mail ausente)</span>;
+  return <span className="text-destructive">não identificado — investigar</span>;
+}
+
 
 export const Route = createFileRoute("/_authenticated/auditoria")({ errorComponent: ErrorComponent,
   component: AuditoriaPage,
@@ -72,8 +88,11 @@ function AuditoriaPage() {
   const [busca, setBusca] = useState("");
   const [dias, setDias] = useState<string>("7");
   const [detalhe, setDetalhe] = useState<AuditRow | null>(null);
+  const [obsOpen, setObsOpen] = useState(false);
+  const [obsAuditor, setObsAuditor] = useState("");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
+
 
   const { has } = usePermissions();
   const { data: me } = useCurrentUser();
@@ -134,6 +153,25 @@ function AuditoriaPage() {
 
   const rows = data?.rows ?? [];
   const total = data?.count ?? 0;
+
+  // Achados automáticos sobre a janela filtrada (até 5000 registros)
+  const { data: achados = [] } = useQuery({
+    queryKey: ["auditoria", "achados", { desde, tabela, operacao }],
+    queryFn: async () => {
+      let q = supabase
+        .from("audit_log")
+        .select("ocorrido_em, operacao, tabela, registro_id, usuario_id, usuario_email, ip")
+        .gte("ocorrido_em", desde)
+        .order("ocorrido_em", { ascending: false })
+        .limit(5000);
+      if (operacao !== "todas") q = q.eq("operacao", operacao);
+      if (tabela !== "todas") q = q.eq("tabela", tabela);
+      const { data: linhas, error } = await q;
+      if (error) throw error;
+      return detectarAchados((linhas ?? []) as LinhaTrilha[]);
+    },
+  });
+
 
   const exportarCsv = async () => {
     if (!total) {
@@ -209,10 +247,11 @@ function AuditoriaPage() {
               Atualizar
             </Button>
             <PermissionGate permission="auditoria.exportar" fallback={null}>
-              <Button variant="outline" size="sm" onClick={() => void gerarPdfAuditoriaFolha()}>
+              <Button variant="outline" size="sm" onClick={() => setObsOpen(true)}>
                 <FileText className="h-4 w-4 mr-1" />
                 Auditoria Forense (PDF)
               </Button>
+
               <Button size="sm" onClick={() => void exportarCsv()}>
                 <Download className="h-4 w-4 mr-1" />
                 Exportar CSV
@@ -287,6 +326,27 @@ function AuditoriaPage() {
           </Select>
         </div>
 
+        {achados.length > 0 && (
+          <div className="rounded-lg border bg-card p-4 space-y-2">
+            <div className="text-sm font-semibold">Achados e pontos de controle (automático)</div>
+            {achados.map((a) => (
+              <div key={a.titulo} className="flex flex-wrap items-center gap-2 text-xs">
+                <Badge
+                  variant={
+                    a.nivel === "alto" ? "destructive" : a.nivel === "medio" ? "default" : "outline"
+                  }
+                >
+                  {a.nivel === "alto" ? "Alta" : a.nivel === "medio" ? "Média" : "Informativo"}
+                </Badge>
+                <span className="font-medium">{a.titulo}</span>
+                <span className="text-muted-foreground">
+                  {a.ocorrencias} ocorrência(s) · {a.detalhe}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+
         <div className="rounded-lg border bg-card overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -297,19 +357,20 @@ function AuditoriaPage() {
                   <th className="p-3">Tabela</th>
                   <th className="p-3">Registro</th>
                   <th className="p-3">Usuário</th>
+                  <th className="p-3">IP</th>
                   <th className="p-3 w-10"></th>
                 </tr>
               </thead>
               <tbody>
                 {isLoading ? (
                   <tr>
-                    <td colSpan={6} className="p-8 text-center text-muted-foreground">
+                    <td colSpan={7} className="p-8 text-center text-muted-foreground">
                       Carregando...
                     </td>
                   </tr>
                 ) : rows.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="p-8 text-center text-muted-foreground">
+                    <td colSpan={7} className="p-8 text-center text-muted-foreground">
                       Nenhum registro encontrado.
                     </td>
                   </tr>
@@ -322,12 +383,13 @@ function AuditoriaPage() {
                       <td className="p-3">
                         <Badge variant={OP_VARIANT[r.operacao]}>{OP_LABEL[r.operacao]}</Badge>
                       </td>
-                      <td className="p-3 font-mono text-xs">{r.tabela}</td>
+                      <td className="p-3 font-mono text-xs">{nomeTabela(r.tabela)}</td>
                       <td className="p-3 font-mono text-xs truncate max-w-[200px]">
                         {r.registro_id ?? "—"}
                       </td>
-                      <td className="p-3">
-                        {r.usuario_email ?? <span className="text-muted-foreground">sistema</span>}
+                      <td className="p-3">{autorLabel(r)}</td>
+                      <td className="p-3 font-mono text-xs">
+                        {r.ip ?? <span className="text-muted-foreground">não capturado</span>}
                       </td>
                       <td className="p-3">
                         <Button
@@ -347,6 +409,7 @@ function AuditoriaPage() {
           </div>
         </div>
 
+
         <Pagination
           page={page}
           pageSize={pageSize}
@@ -359,6 +422,42 @@ function AuditoriaPage() {
         </Tabs>
 
 
+
+        <Dialog open={obsOpen} onOpenChange={setObsOpen}>
+          <DialogContent className="max-w-lg">
+            <DialogHeader>
+              <DialogTitle>Auditoria Forense — observações do auditor</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-3 text-sm">
+              <p className="text-muted-foreground">
+                Os achados são detectados automaticamente sobre a trilha do período
+                selecionado. Registre abaixo observações manuais, se houver.
+              </p>
+              <Textarea
+                rows={5}
+                placeholder="Observações do auditor (opcional)"
+                value={obsAuditor}
+                onChange={(e) => setObsAuditor(e.target.value)}
+              />
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" onClick={() => setObsOpen(false)}>
+                  Cancelar
+                </Button>
+                <Button
+                  onClick={() => {
+                    setObsOpen(false);
+                    void gerarPdfAuditoriaFolha({
+                      dias: Number(dias),
+                      observacoes: obsAuditor,
+                    });
+                  }}
+                >
+                  Gerar PDF
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
 
         <Dialog open={!!detalhe} onOpenChange={(o) => !o && setDetalhe(null)}>
           <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
@@ -373,22 +472,37 @@ function AuditoriaPage() {
                     value={new Date(detalhe.ocorrido_em).toLocaleString("pt-BR")}
                   />
                   <Info label="Operação" value={OP_LABEL[detalhe.operacao]} />
-                  <Info label="Tabela" value={detalhe.tabela} mono />
+                  <Info label="Tabela" value={nomeTabela(detalhe.tabela)} mono />
                   <Info label="Registro" value={detalhe.registro_id ?? "—"} mono />
-                  <Info label="Usuário" value={detalhe.usuario_email ?? "sistema"} />
-                  <Info label="IP" value={detalhe.ip ?? "—"} />
+                  <Info
+                    label="Usuário"
+                    value={
+                      detalhe.usuario_email ??
+                      (detalhe.usuario_id
+                        ? `${detalhe.usuario_id} (e-mail ausente)`
+                        : "não identificado — investigar")
+                    }
+                  />
+                  <Info label="IP" value={detalhe.ip ?? "não capturado"} />
                 </div>
+                {detalhe.operacao === "update" && (
+                  <DiffBlock
+                    anterior={detalhe.valor_anterior}
+                    novo={detalhe.valor_novo}
+                  />
+                )}
                 {detalhe.valor_anterior != null && (
-                  <JsonBlock title="Valor anterior" data={detalhe.valor_anterior} />
+                  <JsonBlock title="Valor anterior (completo)" data={detalhe.valor_anterior} />
                 )}
                 {detalhe.valor_novo != null && (
-                  <JsonBlock title="Valor novo" data={detalhe.valor_novo} />
+                  <JsonBlock title="Valor novo (completo)" data={detalhe.valor_novo} />
                 )}
                 {detalhe.contexto != null && <JsonBlock title="Contexto" data={detalhe.contexto} />}
               </div>
             )}
           </DialogContent>
         </Dialog>
+
       </div>
     </PermissionGate>
   );
@@ -410,6 +524,57 @@ function JsonBlock({ title, data }: { title: string; data: unknown }) {
       <pre className="bg-muted rounded p-3 text-xs overflow-x-auto max-h-64">
         {JSON.stringify(data, null, 2)}
       </pre>
+    </div>
+  );
+}
+
+/** Comparativo antes/depois dos campos efetivamente alterados numa atualização. */
+function DiffBlock({ anterior, novo }: { anterior: unknown; novo: unknown }) {
+  const a = (anterior ?? {}) as Record<string, unknown>;
+  const b = (novo ?? {}) as Record<string, unknown>;
+  const chaves = Array.from(new Set([...Object.keys(a), ...Object.keys(b)])).sort();
+  const fmt = (v: unknown) =>
+    v === null || v === undefined
+      ? "—"
+      : typeof v === "object"
+        ? JSON.stringify(v)
+        : String(v);
+  const alterados = chaves.filter((k) => fmt(a[k]) !== fmt(b[k]));
+
+  if (!alterados.length) {
+    return (
+      <div className="rounded border border-dashed p-3 text-xs text-muted-foreground">
+        Nenhuma diferença de campo registrada nesta atualização (gravação sem mudança de
+        valores ou sem captura de estado anterior).
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <div className="text-xs font-semibold mb-1">
+        Campos alterados ({alterados.length})
+      </div>
+      <div className="overflow-x-auto rounded border">
+        <table className="w-full text-xs">
+          <thead className="bg-muted/50 text-left">
+            <tr>
+              <th className="p-2">Campo</th>
+              <th className="p-2">Antes</th>
+              <th className="p-2">Depois</th>
+            </tr>
+          </thead>
+          <tbody>
+            {alterados.map((k) => (
+              <tr key={k} className="border-t">
+                <td className="p-2 font-mono">{k}</td>
+                <td className="p-2 text-destructive break-all">{fmt(a[k])}</td>
+                <td className="p-2 text-emerald-600 break-all">{fmt(b[k])}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

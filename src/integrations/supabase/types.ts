@@ -979,13 +979,19 @@ export type Database = {
           cargo_assinante: string | null
           codigo_validacao: string
           created_at: string
+          descricao: string | null
           documento_tipo: string
           frequencia_id: string | null
           hash_sha256: string
           id: string
           ip_address: string | null
           metadata: Json | null
+          motivo_revogacao: string | null
           nome_assinante: string
+          pdf_storage_path: string | null
+          revogado_em: string | null
+          revogado_por: string | null
+          status: string
           user_agent: string | null
         }
         Insert: {
@@ -994,13 +1000,19 @@ export type Database = {
           cargo_assinante?: string | null
           codigo_validacao: string
           created_at?: string
+          descricao?: string | null
           documento_tipo?: string
           frequencia_id?: string | null
           hash_sha256: string
           id?: string
           ip_address?: string | null
           metadata?: Json | null
+          motivo_revogacao?: string | null
           nome_assinante: string
+          pdf_storage_path?: string | null
+          revogado_em?: string | null
+          revogado_por?: string | null
+          status?: string
           user_agent?: string | null
         }
         Update: {
@@ -1009,13 +1021,19 @@ export type Database = {
           cargo_assinante?: string | null
           codigo_validacao?: string
           created_at?: string
+          descricao?: string | null
           documento_tipo?: string
           frequencia_id?: string | null
           hash_sha256?: string
           id?: string
           ip_address?: string | null
           metadata?: Json | null
+          motivo_revogacao?: string | null
           nome_assinante?: string
+          pdf_storage_path?: string | null
+          revogado_em?: string | null
+          revogado_por?: string | null
+          status?: string
           user_agent?: string | null
         }
         Relationships: [
@@ -1024,6 +1042,13 @@ export type Database = {
             columns: ["frequencia_id"]
             isOneToOne: false
             referencedRelation: "frequencias"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "documentos_assinados_revogado_por_fkey"
+            columns: ["revogado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
             referencedColumns: ["id"]
           },
         ]

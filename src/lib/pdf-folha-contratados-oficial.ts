@@ -28,7 +28,7 @@ const LINHA_ALTURA = 10;
 const COR_NIVEL_1: [number, number, number] = [139, 106, 42];
 const COR_NIVEL_2: [number, number, number] = [184, 147, 74];
 const COR_NIVEL_3: [number, number, number] = [212, 168, 83];
-const COR_BORDA: [number, number, number] = [180, 180, 180];
+const COR_BORDA: [number, number, number] = [0, 0, 0];
 const COR_TEXTO: [number, number, number] = [0, 0, 0];
 
 type Col = {
@@ -60,10 +60,11 @@ const COLS: Col[] = [
 
 function n(v: number | string | null | undefined): string {
   if (v == null || v === "") return "-";
-  if (typeof v === "string") return v;
-  const x = Number(String(v).replace(",", "."));
+  const texto = String(v).trim();
+  if (!texto) return "-";
+  const x = Number(texto.replace(",", "."));
   if (isNaN(x)) return String(v);
-  if (x === 0) return "0";
+  if (x === 0) return "-";
   return Number.isInteger(x) ? String(x) : x.toFixed(2).replace(".", ",");
 }
 
@@ -195,7 +196,7 @@ function drawRow(doc: jsPDF, y: number, idx: number, item: ItemContratado): numb
   for (const c of COLS) {
     doc.rect(x, y, c.w, LINHA_ALTURA);
     doc.setFont(c.mono ? "courier" : "helvetica", "normal");
-    doc.setFontSize(7);
+    doc.setFontSize(7.5);
     const val = values[c.key] ?? "";
     const tx = c.align === "left" ? x + 1.5 : c.align === "right" ? x + c.w - 1.5 : x + c.w / 2;
     const isTextoLongo =
@@ -352,11 +353,12 @@ export async function gerarFolhaContratadosOficial(input: PdfContratadosInput): 
     const situacao = (it as any).situacao;
     const nVal = (v: any) => {
       if (situacao && situacao !== "Ativo") return situacao;
-      if (v == null || v === "") return "";
-      if (typeof v === "string") return v;
-      const x = Number(String(v).replace(",", "."));
+      if (v == null || v === "") return "-";
+      const texto = String(v).trim();
+      if (!texto) return "-";
+      const x = Number(texto.replace(",", "."));
       if (isNaN(x)) return String(v);
-      if (x === 0) return "0";
+      if (x === 0) return "-";
       return Number.isInteger(x) ? String(x) : x.toFixed(2).replace(".", ",");
     };
     return [
@@ -364,7 +366,7 @@ export async function gerarFolhaContratadosOficial(input: PdfContratadosInput): 
       p.nome ?? "",
       fmtCPF(p.cpf),
       p.cargo ?? "",
-      (it as any).lotacao_sigla || (it as any).setor_nome || "CAPS II",
+      (it as any).lotacao_sigla || p.setor || input.unidadeNome || "-",
 
 
       nVal(l.dias_trabalhados),
@@ -385,35 +387,36 @@ export async function gerarFolhaContratadosOficial(input: PdfContratadosInput): 
     body,
     startY: 44,
     tableWidth: "auto",
-    // bottom reservado (45mm) = zona limpa para as assinaturas em todas as páginas
-    margin: { left: 10, right: 10, top: 44, bottom: 45 },
+    // Faixa compacta: tabela até 145 mm, assinaturas até 177 mm e validação abaixo.
+    margin: { left: 10, right: 10, top: 44, bottom: 65 },
     rowPageBreak: "avoid",
     styles: {
-      fontSize: 7,
+      fontSize: 7.5,
+      textColor: [0, 0, 0],
       cellPadding: 1.2,
-      lineColor: [180, 180, 180],
-      lineWidth: 0.15,
+      lineColor: [0, 0, 0],
+      lineWidth: 0.2,
       overflow: "linebreak",
       valign: "middle",
     },
     headStyles: {
       fillColor: [240, 243, 246],
-      textColor: [30, 41, 59],
+      textColor: [0, 0, 0],
       fontStyle: "bold",
       halign: "center",
       valign: "middle",
-      fontSize: 6.5,
+      fontSize: 7,
       cellPadding: 1.2,
-      lineColor: [120, 120, 120],
+      lineColor: [0, 0, 0],
       lineWidth: 0.25,
     },
     alternateRowStyles: { fillColor: [248, 250, 252] },
     columnStyles: {
-      0: { halign: "center" },
-      1: { cellWidth: 50, halign: "left" },
+      0: { cellWidth: 10, halign: "center" },
+      1: { cellWidth: 45, halign: "left" },
       2: { cellWidth: 24, halign: "center" },
-      3: { cellWidth: 35, halign: "left" },
-      4: { cellWidth: 18, halign: "center" },
+      3: { cellWidth: 32, halign: "left" },
+      4: { cellWidth: 28, halign: "center" },
       5: { halign: "center" },
       6: { halign: "center" },
       7: { halign: "center" },
@@ -423,7 +426,7 @@ export async function gerarFolhaContratadosOficial(input: PdfContratadosInput): 
       11: { halign: "center" },
       12: { halign: "center" },
       13: { halign: "center" },
-      14: { cellWidth: 40, halign: "left" },
+      14: { cellWidth: 38, halign: "left" },
     },
     didDrawPage: (data) => {
       drawHeader();
@@ -441,10 +444,9 @@ export async function gerarFolhaContratadosOficial(input: PdfContratadosInput): 
     },
   });
 
-  // A zona inferior (45mm) fica sempre livre: as assinaturas são carimbadas
-  // dentro dela em TODAS as páginas, sem necessidade de página extra.
+  // Assinaturas compactas em todas as páginas; validação eletrônica só na última.
   const assinaturaBaseY: number | undefined =
-    assinaturas.length > 0 ? pageH - 42 : undefined;
+    assinaturas.length > 0 ? pageH - 62 : undefined;
 
   const compFile = `${String(input.competencia.mes).padStart(2, "0")}-${input.competencia.ano}`;
   await finalizarPdf(doc, {
@@ -454,6 +456,9 @@ export async function gerarFolhaContratadosOficial(input: PdfContratadosInput): 
     secretariaId: input.secretariaId ?? null,
     assinaturas,
     yPadraoMm: assinaturaBaseY,
+    ySeloValidacaoMm: pageH - 30,
+    tamanhoMaximoAssinaturaPercentual: 55,
+    forcarYPadraoAssinaturas: true,
     xPadraoMm: MARGEM_PDF,
     competencia: input.competencia,
   });
